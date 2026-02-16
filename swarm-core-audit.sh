@@ -98,33 +98,50 @@ fi
 ALL_NODES_JSON=$($CURL_CMD "${BASE_URL}/nodes")
 
 # --- Processing Function ---
+# --- Processing Function (v0.3.1) ---
 process_node_data() {
     local role=$1
     local os=$2
+    
+    # Filter JSON: .[] iterates through the node array
     local filter=".[]"
     [[ "$role" != "all" ]] && filter="$filter | select(.Spec.Role == \"$role\")"
     [[ -n "$os" ]]         && filter="$filter | select(.Description.Platform.OS == \"$os\")"
     
     # Extract NanoCPUs and MemoryBytes
-    local raw_data=$(echo "$ALL_NODES_JSON" | jq -r "$filter | \"\(.Description.Resources.NanoCPUs // 0) \(.Description.Resources.MemoryBytes // 0)\"")
+    local raw_data
+    raw_data=$(echo "$ALL_NODES_JSON" | jq -r "$filter | \"\(.Description.Resources.NanoCPUs // 0) \(.Description.Resources.MemoryBytes // 0)\"" 2>/dev/null)
     
-    if [ -z "$raw_data" ]; then return; fi
+    # Skip if no nodes match the filter
+    if [[ -z "${raw_data// }" ]]; then 
+        return 
+    fi
 
+    # Initialize stats for each run
     local CPUs=""
+    local total_cpu=0
     local total_mem_bytes=0
     local count=0
 
+    # Process the raw data line by line
     while read -r nano mem; do
         [[ -z "$nano" || "$nano" -eq 0 ]] && continue
-        CPUs="${CPUs}$((nano / 1000000000))"$'\n'
+        
+        # Convert NanoCPUs to whole Cores
+        local cpu=$((nano / 1000000000))
+        CPUs="${CPUs}${cpu}"$'\n'
+        total_cpu=$((total_cpu + cpu))
+        
+        # Accumulate total RAM bytes
         total_mem_bytes=$(echo "$total_mem_bytes + $mem" | bc)
         ((count++))
     done <<< "$raw_data"
 
+    # Exit function if no valid nodes were processed
     if [ "$count" -eq 0 ]; then return; fi
 
+    # Sort and calculate CPU stats
     CPUs=$(echo "$CPUs" | sed '/^$/d' | sort -n)
-    local total_cpu=$(echo "$CPUs" | paste -sd+ - | bc)
     local min_cpu=$(echo "$CPUs" | head -n1)
     local max_cpu=$(echo "$CPUs" | tail -n1)
     local avg_cpu=$(echo "scale=2; $total_cpu / $count" | bc)
@@ -145,9 +162,13 @@ process_node_data() {
         [[ -n "$os" ]] && title="$title running ${os}"
         echo "=========================================="
         echo "$title:"
+        
+        # Print Core Distribution
         echo "$CPUs" | uniq -c | while read -r c s; do
-            printf "%d Core x %d\n" "$s" "$c"
+            printf "  %2d Core x %d nodes\n" "$s" "$c"
         done
+        
+        # Print Summary Stats
         echo -e "\n# Nodes    - $count"
         echo "Ttl Cores  - $total_cpu"
         echo "Ttl RAM    - ${total_mem_gb} GiB"
