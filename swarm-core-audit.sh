@@ -1,6 +1,13 @@
 #!/bin/bash
 
-set -e
+# Force stdout/stderr to be unbuffered
+exec 1>&2
+
+set -eo pipefail #Exit on error AND catch errors in pipes
+# --- Version Check ---
+BASH_MAJOR_VERSION=${BASH_VERSINFO[0]}
+echo "DEBUG: Starting script in Bash version $BASH_MAJOR_VERSION"
+
 # --- Dependency Check ---
 if ! command -v jq &> /dev/null; then
     echo "ERROR: 'jq' is not installed. This script requires it for parsing API data."
@@ -8,7 +15,6 @@ if ! command -v jq &> /dev/null; then
 fi
 
 # --- Version Check ---
-BASH_MAJOR_VERSION=${BASH_VERSINFO[0]}
 if [ "$BASH_MAJOR_VERSION" -lt 4 ]; then
     # Optional: Log that we are running in legacy compatibility mode
     COMPAT_MODE=true
