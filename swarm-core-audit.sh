@@ -47,11 +47,15 @@ for cmd in jq bc curl; do
 done
 
 # --- Configuration & Connection Logic ---
+# --- Improved Configuration & Connection Logic ---
 if [ -n "${UCP_URL}" ]; then
+    echo "DEBUG: Attempting to connect to UCP at ${UCP_URL}..."
     CURL_CMD="curl -s -m 15 --key /data/key.pem --cert /data/cert.pem"
+    
     if ! curl -s --cacert /data/ca.pem "https://${UCP_URL}/_ping" | grep -q "OK"; then
+        echo "DEBUG: Ping with CA cert failed, trying without..."
         if ! curl -s "https://${UCP_URL}/_ping" | grep -q "OK"; then
-            echo "ERROR: UCP unavailable at https://${UCP_URL}/_ping"
+            echo "ERROR: UCP endpoint unreachable at https://${UCP_URL}/_ping"
             exit 1
         fi
         BASE_URL="https://${UCP_URL}"
@@ -60,9 +64,23 @@ if [ -n "${UCP_URL}" ]; then
         BASE_URL="https://${UCP_URL}"
     fi
 else
+    echo "DEBUG: No UCP_URL set. Attempting to use local Docker socket..."
     CURL_CMD="curl -s -m 5 --unix-socket /var/run/docker.sock"
     BASE_URL="http://v1.30"
+    
+    if [ ! -S /var/run/docker.sock ]; then
+        echo "ERROR: Docker socket not found at /var/run/docker.sock. Did you mount the volume?"
+        exit 1
+    fi
 fi
+
+# Check Swarm Manager Status
+SWARM_ID=$($CURL_CMD "${BASE_URL}/swarm" | jq -r .ID 2>/dev/null || echo "null")
+if [ "$SWARM_ID" == "null" ]; then
+    echo "ERROR: API returned null or connection failed. This node may not be a Swarm manager."
+    exit 1
+fi
+echo "DEBUG: Successfully connected to Swarm ID: $SWARM_ID"
 
 # Check Swarm Status
 if [ "$($CURL_CMD "${BASE_URL}/swarm" | jq -r .ID)" == "null" ]; then
