@@ -3,6 +3,6 @@ MAINTAINER Matt Bentley <mbentley@mbentley.net>
 
 RUN apk add --no-cache bash curl jq
 
-COPY swarm_core_audit.sh /swarm_core_audit.sh
+COPY swarm-core-audit.sh /usr/local/bin/swarm-core-audit.sh
 
-CMD ["/swarm_core_audit.sh"]
+CMD ["/usr/local/bin/swarm-core-audit.sh"]
