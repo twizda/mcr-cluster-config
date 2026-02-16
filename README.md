@@ -6,17 +6,25 @@ To pull this image:
 `docker pull mirantis/audit-cluster`
 
 ## v0.2 Enhancements
-* **Performance Optimization**: API calls are now bundled, reducing network overhead by fetching all node data in a single request.
-* **Format Flexibility**: The `support_dump_count_cores.sh` script now supports `--json` and `--csv` flags.
+* **Performance Optimization**: API calls are now bundled, fetching all node data in a single request to reduce network overhead.
+* **Output Formats**: Added support for `--json` and `--csv` flags for both live audit and support dump scripts.
 * **Cross-Platform Support**: Optimized for both modern Linux (Bash 4+) and legacy macOS (Bash 3.2).
+* **CLI Options**: Integrated a usage menu and flag parsing for better usability.
+* **Memory**: Adds output for node memory
 
 ## Example Usage
 
 There are three methods to run this audit:
 
-1. [**On the cluster**](#on-the-cluster) - Run it directly on a manager via a client bundle.
-2. [**On a local engine**](#on-a-local-engine) - Run it on a local machine and communicate to UCP APIs using a client bundle.
+1. [**On the cluster**](#on-the-cluster) - Run it directly on a manager via the Docker socket.
+2. [**On a local engine**](#on-a-local-engine) - Communicate to UCP APIs using a client bundle.
 3. [**From a UCP support dump**](#from-a-ucp-support-dump) - Analyze static files locally using the provided script.
+
+### CLI Flags (v0.2)
+Both `swarm-core_audit.sh` and `support_dump_count_cores.sh` support the following:
+* `--json`: Output full cluster data in JSON format.
+* `--csv`: Output summary data in CSV format.
+* `--help`: Display the usage menu.
 
 ### On the cluster
 
@@ -44,9 +52,7 @@ There are three methods to run this audit:
 
 ### From a UCP support dump
 
-If you wish to retrieve data from a static UCP support dump, use the `support_dump_count_cores.sh` script.
+Analyze static files from a support dump locally. This is useful when API access is restricted.
 
-**New in v0.2:** Output data in specific formats for automation:
 ```bash
-./support_dump_count_cores.sh --json
-./support_dump_count_cores.sh --csv
+./support_dump_count_cores.sh --csv > cluster_report.csv

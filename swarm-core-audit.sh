@@ -1,6 +1,11 @@
 #!/bin/bash
 
 set -e
+# --- Dependency Check ---
+if ! command -v jq &> /dev/null; then
+    echo "ERROR: 'jq' is not installed. This script requires it for parsing API data."
+    exit 1
+fi
 
 # --- Version Check ---
 BASH_MAJOR_VERSION=${BASH_VERSINFO[0]}
@@ -15,7 +20,7 @@ FORMAT="text"
 # --- Usage Function ---
 usage() {
     echo "Usage: $0 [--json | --csv]"
-    echo "Audits live Docker Swarm nodes for CPU core counts."
+    echo "Audits live Docker Swarm nodes for CPU and Memory stats."
     echo ""
     echo "Options:"
     echo "  --json    Output full cluster data in JSON format"
@@ -32,9 +37,6 @@ case "$1" in
     "")         FORMAT="text" ;;
     *)          echo "Unknown option: $1"; usage ;;
 esac
-
-# --- Version Check ---
-BASH_MAJOR_VERSION=${BASH_VERSINFO[0]}
 
 # --- Dependency Check ---
 for cmd in jq bc curl; do
@@ -68,7 +70,7 @@ if [ "$($CURL_CMD "${BASE_URL}/swarm" | jq -r .ID)" == "null" ]; then
     exit 1
 fi
 
-# Fetch ALL node data once
+# Fetch ALL node data
 ALL_NODES_JSON=$($CURL_CMD "${BASE_URL}/nodes")
 
 # --- Processing Function ---
@@ -79,33 +81,41 @@ process_node_data() {
     [[ "$role" != "all" ]] && filter="$filter | select(.Spec.Role == \"$role\")"
     [[ -n "$os" ]]         && filter="$filter | select(.Description.Platform.OS == \"$os\")"
     
-    local cores_raw=$(echo "$ALL_NODES_JSON" | jq -r "$filter | .Description.Resources.NanoCPUs // 0")
+    # Extract NanoCPUs and MemoryBytes
+    local raw_data=$(echo "$ALL_NODES_JSON" | jq -r "$filter | \"\(.Description.Resources.NanoCPUs // 0) \(.Description.Resources.MemoryBytes // 0)\"")
     
-    if [ -z "$cores_raw" ] || [ "$cores_raw" == "0" ]; then
-        return
-    fi
+    if [ -z "$raw_data" ]; then return; fi
 
     local CPUs=""
-    while read -r nano; do
-        [[ -z "$nano" ]] && continue
+    local total_mem_bytes=0
+    local count=0
+
+    while read -r nano mem; do
+        [[ -z "$nano" || "$nano" -eq 0 ]] && continue
         CPUs="${CPUs}$((nano / 1000000000))"$'\n'
-    done <<< "$cores_raw"
+        total_mem_bytes=$(echo "$total_mem_bytes + $mem" | bc)
+        ((count++))
+    done <<< "$raw_data"
+
+    if [ "$count" -eq 0 ]; then return; fi
 
     CPUs=$(echo "$CPUs" | sed '/^$/d' | sort -n)
-    local count=$(echo "$CPUs" | wc -l | tr -d ' ')
-    local total=$(echo "$CPUs" | paste -sd+ - | bc)
-    local min=$(echo "$CPUs" | head -n1)
-    local max=$(echo "$CPUs" | tail -n1)
-    local avg=$(echo "scale=2; $total / $count" | bc)
+    local total_cpu=$(echo "$CPUs" | paste -sd+ - | bc)
+    local min_cpu=$(echo "$CPUs" | head -n1)
+    local max_cpu=$(echo "$CPUs" | tail -n1)
+    local avg_cpu=$(echo "scale=2; $total_cpu / $count" | bc)
+
+    # Convert memory to GiB (Bytes / 1024^3)
+    local total_mem_gb=$(echo "scale=2; $total_mem_bytes / 1073741824" | bc)
+    local avg_mem_gb=$(echo "scale=2; $total_mem_gb / $count" | bc)
 
     # --- Output Logic ---
     if [ "$FORMAT" == "json" ]; then
-        # Building JSON fragments
         local key="${role}_${os:-all}"
-        printf '"%s": {"count": %d, "total": %d, "min": %d, "max": %d, "avg": %s}' \
-               "$key" "$count" "$total" "$min" "$max" "$avg"
+        printf '"%s": {"nodes": %d, "cpu": {"total": %d, "avg": %s}, "mem_gib": {"total": %s, "avg": %s}}' \
+               "$key" "$count" "$total_cpu" "$avg_cpu" "$total_mem_gb" "$avg_mem_gb"
     elif [ "$FORMAT" == "csv" ]; then
-        echo "${role},${os:-all},$count,$total,$min,$max,$avg"
+        echo "${role},${os:-all},$count,$total_cpu,$avg_cpu,$total_mem_gb,$avg_mem_gb"
     else
         local title="Data for ${role} nodes"
         [[ -n "$os" ]] && title="$title running ${os}"
@@ -114,7 +124,11 @@ process_node_data() {
         echo "$CPUs" | uniq -c | while read -r c s; do
             printf "%d Core x %d\n" "$s" "$c"
         done
-        echo -e "\n# Nodes  - $count\nTtl Core - $total\nMin Core - $min\nMax Core - $max\nAvg Core - $avg"
+        echo -e "\n# Nodes    - $count"
+        echo "Ttl Cores  - $total_cpu"
+        echo "Ttl RAM    - ${total_mem_gb} GiB"
+        echo "Avg Cores  - $avg_cpu"
+        echo "Avg RAM    - ${avg_mem_gb} GiB"
     fi
 }
 
@@ -124,21 +138,12 @@ if [ "$FORMAT" == "json" ]; then
     echo -n "  " && process_node_data all
     echo "," && echo -n "  " && process_node_data manager
     echo "," && echo -n "  " && process_node_data worker
-    echo "," && echo -n "  " && process_node_data all linux
-    echo "," && echo -n "  " && process_node_data all windows
     echo -e "\n}"
 elif [ "$FORMAT" == "csv" ]; then
-    echo "Role,OS,NodeCount,TotalCores,MinCores,MaxCores,AvgCores"
-    process_node_data all
-    process_node_data manager
-    process_node_data worker
-    process_node_data all linux
-    process_node_data all windows
+    echo "Role,OS,NodeCount,TotalCores,AvgCores,TotalGiB,AvgGiB"
+    process_node_data all; process_node_data manager; process_node_data worker
 else
-    process_node_data all
-    process_node_data manager
-    process_node_data worker
-    process_node_data all linux
-    process_node_data all windows
+    process_node_data all; process_node_data manager; process_node_data worker
+    process_node_data all linux; process_node_data all windows
     echo "=========================================="
 fi
