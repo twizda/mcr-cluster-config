@@ -1,148 +1,52 @@
-# msr.ci.mirantis.com/twizda/mcr-cluster-config
+# mirantis/audit-cluster
 
-docker image for auditing a Swarm/MKE cluster to return the core counts and other sizing stats
-based off of alpine:latest
+Docker image for auditing a Swarm/UCP cluster to return the core counts and other sizing stats based on `alpine:latest`.
 
 To pull this image:
-`docker pull msr.ci.mirantis.com/twizda/mcr-cluster-config`
+`docker pull mirantis/audit-cluster`
 
-## Example usage
+## v0.2 Enhancements
+* **Performance Optimization**: API calls are now bundled, reducing network overhead by fetching all node data in a single request.
+* **Format Flexibility**: The `support_dump_count_cores.sh` script now supports `--json` and `--csv` flags.
+* **Cross-Platform Support**: Optimized for both modern Linux (Bash 4+) and legacy macOS (Bash 3.2).
 
-There are two methods to run this container:
+## Example Usage
 
-1. [__On the cluster__](#on-the-cluster) - Run it directly on a manager via a client bundle (requires image pull access from Mirantis' MSR)
+There are three methods to run this audit:
 
-1. [__On a local engine__](#on-a-local-engine) - Run it on a local machine (such as Docker Desktop) and communicate to the MKE APIs using a client bundle
-
-If you are running in a secured environment or use Docker Content Trust policy enforcement, you'll want to choose the 2nd option.  The first option is the quickest due to all API calls going over the Docker socket of a manager instead of across the MKE APIs but the 2nd option will not run any containers in your environment.
+1. [**On the cluster**](#on-the-cluster) - Run it directly on a manager via a client bundle.
+2. [**On a local engine**](#on-a-local-engine) - Run it on a local machine and communicate to UCP APIs using a client bundle.
+3. [**From a UCP support dump**](#from-a-ucp-support-dump) - Analyze static files locally using the provided script.
 
 ### On the cluster
 
-1. Load an MKE client bundle (or skip the client bundle and run the command directly on a manager)
+1. Load a UCP client bundle (or skip the bundle and run directly on a manager).
+2. Run the container:
 
-1. Run the container:
-
-    ```
-    docker run -t --rm --name mcr-cluster-config \
+    ```bash
+    docker run -t --rm --name audit-cluster \
       -v /var/run/docker.sock:/var/run/docker.sock \
       -e affinity:container==ucp-controller \
-      msr.ci.mirantis.com/twizda/mcr-cluster-config
+      mirantis/audit-cluster
     ```
-
-1. Data will be returned:
-
-    ```
-    $ docker run -t --rm --name mcr-cluster-config \
-        -v /var/run/docker.sock:/var/run/docker.sock \
-        -e affinity:container==ucp-controller \
-        msr.ci.mirantis.com/twizda/mcr-cluster-config
-    ========================
-    Data for all nodes:
-    2 Core x 4
-    4 Core x 11
-
-    # Nodes - 15
-    Ttl Core - 52
-    Min Core - 2
-    Max Core - 4
-    Avg Core - 3.46
-    ========================
-    Data for manager nodes:
-    4 Core x 3
-
-    # Nodes - 3
-    Ttl Core - 12
-    Min Core - 4
-    Max Core - 4
-    Avg Core - 4.00
-    ========================
-    Data for worker nodes:
-    2 Core x 4
-    4 Core x 8
-
-    # Nodes - 12
-    Ttl Core - 40
-    Min Core - 2
-    Max Core - 4
-    Avg Core - 3.33
-    ========================
-    Data for all nodes running linux:
-    2 Core x 4
-    4 Core x 9
-
-    # Nodes - 13
-    Ttl Core - 44
-    Min Core - 2
-    Max Core - 4
-    Avg Core - 3.38
-    ========================
-    Data for all nodes running windows:
-    4 Core x 2
-
-    # Nodes - 2
-    Ttl Core - 8
-    Min Core - 4
-    Max Core - 4
-    Avg Core - 4.00
-    ========================
-    ```
-
-   In the above example, the cluster has 15 nodes, 4 nodes have 2 cores each, 11 nodes have 4 cores each.
 
 ### On a local engine
 
-1. Find the URL to your MKE and the local path to your _extracted_ client bundle.
+1. Find your UCP URL and the local path to your extracted client bundle.
+2. Run the container locally, updating `UCP_URL` and the volume path:
 
-1. Run the container locally, updating the `UCP_URL` and the path to your extracted client bundle:
-
-    ```
-    docker run -t --rm --name mcr-cluster-config \
-      -e UCP_URL="mke.example.com" \
+    ```bash
+    docker run -t --rm --name audit-cluster \
+      -e UCP_URL="ucp.example.com" \
       -v /path/to/your/client/bundle:/data:ro \
-      msr.ci.mirantis.com/twizda/mcr-cluster-config
+      mirantis/audit-cluster
     ```
 
-1. Results will be returned:
+### From a UCP support dump
 
-    ```
-    $ docker run -t --rm --name mcr-cluster-config \
-        -e UCP_URL="ucp.example.com" \
-        -v /path/to/your/client/bundle:/data:ro \
-        msr.ci.mirantis.com/twizda/mcr-cluster-config
-    ========================
-    Data for all nodes:
-    2 Core x 4
-    4 Core x 11
+If you wish to retrieve data from a static UCP support dump, use the `support_dump_count_cores.sh` script.
 
-    # Nodes - 15
-    Ttl Core - 52
-    Min Core - 2
-    Max Core - 4
-    Avg Core - 3.46
-    ========================
-    Data for manager nodes:
-    4 Core x 3
-
-    # Nodes - 3
-    Ttl Core - 12
-    Min Core - 4
-    Max Core - 4
-    Avg Core - 4.00
-    ========================
-    Data for worker nodes:
-    2 Core x 4
-    4 Core x 8
-
-    # Nodes - 12
-    Ttl Core - 40
-    Min Core - 2
-    Max Core - 4
-    Avg Core - 3.33
-    ========================
-    ```
-
-   In the above example, the cluster has 15 nodes, 4 nodes have 2 cores each, 11 nodes have 4 cores each.
-
-### From an MKE cluster support bundle
-
-If you wish to retrieve some basic data from an MKE cluster support bundle, you can utilize the `support_dump_count_cores.sh` script to analyze the dump locally.  There is less detailed information in the support dump as the data structure is different than the API calls but you can get general information about cluster size.
+**New in v0.2:** Output data in specific formats for automation:
+```bash
+./support_dump_count_cores.sh --json
+./support_dump_count_cores.sh --csv

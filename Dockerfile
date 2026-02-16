@@ -1,11 +1,8 @@
 FROM alpine:latest
-# MAINTAINER Tom Wizda <twizda@mirantis.com>
-LABEL Maintainer_Name="Tom Wizda"
-LABEL Maintainer_Email="twizda@mirantis.com"
-LABEL BuildDate="20250519"
+MAINTAINER Matt Bentley <mbentley@mbentley.net>
 
-RUN apk update && apk upgrade && apk add --no-cache bash curl jq
+RUN apk add --no-cache bash curl jq
 
-COPY swarm_core_count.sh /swarm_core_count.sh
+COPY swarm_core_audit.sh /swarm_core_audit.sh
 
-CMD ["/swarm_core_count.sh"]
+CMD ["/swarm_core_audit.sh"]

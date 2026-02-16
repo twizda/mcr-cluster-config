@@ -1,36 +1,88 @@
 #!/bin/bash
 
-# make sure the necessary files exist in the PWD
-if [ ! -f ucp-nodes.txt ] || [ ! -f ucp-instance-id.txt ]
-then
-  echo "ERROR: Unable to find ucp-nodes.txt or ucp-instance-id.txt"
-  echo "  Hint: are you running this script from the directory where support dump is extracted?"
-  exit 1
+# Default format
+FORMAT="text"
+
+# Help menu
+usage() {
+    echo "Usage: $0 [--json | --csv]"
+    echo "Checks CPU core counts from Docker Swarm ucp-nodes.txt"
+    exit 1
+}
+
+# Parse flags
+case "$1" in
+    --json) FORMAT="json" ;;
+    --csv)  FORMAT="csv"  ;;
+    -h|--help) usage ;;
+esac
+
+# Check for required files
+if [[ ! -f ucp-nodes.txt ]] || [[ ! -f ucp-instance-id.txt ]]; then
+    echo "ERROR: Required files (ucp-nodes.txt or ucp-instance-id.txt) not found."
+    exit 1
 fi
 
-# calculate needed values
-nanoCPUs="$(grep NanoCPUs ucp-nodes.txt | awk '{print $2}' | awk -F ',' '{print $1}')" &&\
-CPUs=$(for i in ${nanoCPUs}; do   echo "$((i/1000000000))"; done) &&\
-ttlCPU="$(count=0; total=0; for i in ${CPUs};do total=$(echo "$total+$i" | bc ); ((count++)); done; echo "${total}")"
-node_count=$(echo "${CPUs}" | wc -l | tr -d " ")
-avgCPU="$(echo "scale=2; $ttlCPU / $node_count" | bc)"
-minCPU="$(echo "${CPUs}" | sort -n | head -1)"
-maxCPU="$(echo "${CPUs}" | sort -n | tail -n 1)"
-CPU_sizes="$(echo "${CPUs}" | sort -n | uniq)"
+# Variables
+CLUSTER_ID=$(cat ucp-instance-id.txt)
+# Extract NanoCPUs and convert to whole Cores immediately
+CORES_LIST=$(grep NanoCPUs ucp-nodes.txt | awk -F '[: ,]+' '{print $3/1000000000}')
 
-# output cluster id
-echo "ClusterID - $(cat ucp-instance-id.txt)"
+# Stats Calculation
+total_cpu=0
+count=0
+min_cpu=999
+max_cpu=0
 
-# CPU size report
-for size in ${CPU_sizes}
-do
-  echo -n "${size} Core x "
-  echo "${CPUs}" | grep "${size}" | sort -n | wc -l | tr -d " "
+# Populate an associative array for the "X Core x Y Nodes" breakdown
+declare -A size_counts
+
+for cpu in $CORES_LIST; do
+    total_cpu=$(echo "$total_cpu + $cpu" | bc)
+    ((count++))
+    ((cpu < min_cpu)) && min_cpu=$cpu
+    ((cpu > max_cpu)) && max_cpu=$cpu
+    ((size_counts[$cpu]++))
 done
 
-echo
-echo "# Nodes  - ${node_count}"
-echo "Ttl Core - ${ttlCPU}"
-echo "Min Core - ${minCPU}"
-echo "Max Core - ${maxCPU}"
-echo "Avg Core - ${avgCPU}"
+avg_cpu=$(echo "scale=2; $total_cpu / $count" | bc)
+
+# --- Output Logic ---
+
+if [ "$FORMAT" == "json" ]; then
+    # Constructing a simple JSON object
+    echo "{"
+    echo "  \"cluster_id\": \"$CLUSTER_ID\","
+    echo "  \"node_count\": $count,"
+    echo "  \"total_cores\": $total_cpu,"
+    echo "  \"min_cores\": $min_cpu,"
+    echo "  \"max_cores\": $max_cpu,"
+    echo "  \"avg_cores\": $avg_cpu,"
+    echo "  \"breakdown\": {"
+    first=true
+    for size in "${!size_counts[@]}"; do
+        if [ "$first" = true ]; then first=false; else echo ","; fi
+        echo -n "    \"${size}_core\": ${size_counts[$size]}"
+    done
+    echo -e "\n  }"
+    echo "}"
+
+elif [ "$FORMAT" == "csv" ]; then
+    echo "ClusterID,NodeCount,TotalCores,MinCores,MaxCores,AvgCores"
+    echo "$CLUSTER_ID,$count,$total_cpu,$min_cpu,$max_cpu,$avg_cpu"
+
+else
+    # Improved Text Output
+    echo "------------------------------------------"
+    echo " Cluster ID: $CLUSTER_ID"
+    echo "------------------------------------------"
+    printf "%-15s : %s\n" "Total Nodes" "$count"
+    printf "%-15s : %s\n" "Total Cores" "$total_cpu"
+    printf "%-15s : %s\n" "Min/Max/Avg" "$min_cpu / $max_cpu / $avg_cpu"
+    echo "------------------------------------------"
+    echo " Core Distribution:"
+    for size in $(echo "${!size_counts[@]}" | tr ' ' '\n' | sort -n); do
+        printf "  %2d Core x %d nodes\n" "$size" "${size_counts[$size]}"
+    done
+    echo "------------------------------------------"
+fi
