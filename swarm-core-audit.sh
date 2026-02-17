@@ -1,9 +1,6 @@
 #!/bin/bash
 
-# Force stdout/stderr to be unbuffered so Docker logs capture it immediately
-exec 1>&2
-
-set -eo pipefail 
+set -eo pipefail # Exit on error AND catch errors in pipes
 
 # --- Version Check ---
 BASH_MAJOR_VERSION=${BASH_VERSINFO[0]}
@@ -12,7 +9,7 @@ echo "DEBUG: Starting script in Bash version $BASH_MAJOR_VERSION"
 # --- Dependency Check ---
 for cmd in jq bc curl; do
     if ! command -v $cmd &> /dev/null; then
-        echo "ERROR: '$cmd' is not installed."
+        echo "ERROR: '$cmd' is not installed. This script requires jq, bc, and curl."
         exit 1
     fi
 done
@@ -24,6 +21,11 @@ FORMAT="text"
 usage() {
     echo "Usage: $0 [--json | --csv]"
     echo "Audits live Docker Swarm nodes for CPU and Memory stats."
+    echo ""
+    echo "Options:"
+    echo "  --json    Output full cluster data in JSON format"
+    echo "  --csv     Output summary data in CSV format"
+    echo "  --help    Display this help message"
     exit 1
 }
 
@@ -63,7 +65,7 @@ else
     fi
 fi
 
-# Check Swarm Manager Status once
+# Check Swarm Manager Status
 SWARM_ID=$($CURL_CMD "${BASE_URL}/swarm" | jq -r .ID 2>/dev/null || echo "null")
 if [ "$SWARM_ID" == "null" ]; then
     echo "ERROR: API returned null. This node is not a Swarm manager or connection failed."
@@ -83,31 +85,43 @@ fi
 process_node_data() {
     local role=$1
     local os=$2
+    
+    # Filter JSON: .[] iterates through the node array
     local filter=".[]"
     [[ "$role" != "all" ]] && filter="$filter | select(.Spec.Role == \"$role\")"
     [[ -n "$os" ]]         && filter="$filter | select(.Description.Platform.OS == \"$os\")"
     
+    # Extract NanoCPUs and MemoryBytes
     local raw_data
     raw_data=$(echo "$ALL_NODES_JSON" | jq -r "$filter | \"\(.Description.Resources.NanoCPUs // 0) \(.Description.Resources.MemoryBytes // 0)\"" 2>/dev/null)
     
-    if [[ -z "${raw_data// }" ]]; then return; fi
+    # Skip if no nodes match the filter
+    if [[ -z "${raw_data// }" ]]; then 
+        return 
+    fi
 
     local CPUs=""
     local total_cpu=0
     local total_mem_bytes=0
     local count=0
 
-    while read -r nano mem; do
+    # Process the raw data line by line; handle trailing newlines correctly
+    while read -r nano mem || [[ -n "$nano" ]]; do
         [[ -z "$nano" || "$nano" -eq 0 ]] && continue
+        
+        # Convert NanoCPUs to whole Cores
         local cpu=$((nano / 1000000000))
         CPUs="${CPUs}${cpu}"$'\n'
         total_cpu=$((total_cpu + cpu))
+        
+        # Accumulate total RAM bytes
         total_mem_bytes=$(echo "$total_mem_bytes + $mem" | bc)
         ((count++))
     done <<< "$raw_data"
 
     if [ "$count" -eq 0 ]; then return; fi
 
+    # Sort and calculate stats
     CPUs=$(echo "$CPUs" | sed '/^$/d' | sort -n)
     local min_cpu=$(echo "$CPUs" | head -n1)
     local max_cpu=$(echo "$CPUs" | tail -n1)
@@ -115,6 +129,7 @@ process_node_data() {
     local total_mem_gb=$(echo "scale=2; $total_mem_bytes / 1073741824" | bc)
     local avg_mem_gb=$(echo "scale=2; $total_mem_gb / $count" | bc)
 
+    # --- Output Logic ---
     if [ "$FORMAT" == "json" ]; then
         local key="${role}_${os:-all}"
         printf '"%s": {"nodes": %d, "cpu": {"total": %d, "avg": %s}, "mem_gib": {"total": %s, "avg": %s}}' \
@@ -124,10 +139,15 @@ process_node_data() {
     else
         echo "=========================================="
         echo "Data for ${role} nodes${os:+ running $os}:"
+        
+        # Core Distribution
         echo "$CPUs" | uniq -c | while read -r c s; do
             printf "  %2d Core x %d nodes\n" "$s" "$c"
         done
-        echo -e "\n# Nodes    - $count\nTtl Cores  - $total_cpu\nTtl RAM    - ${total_mem_gb} GiB\nAvg Cores  - $avg_cpu\nAvg RAM    - ${avg_mem_gb} GiB"
+        
+        # Summary Stats
+        printf "\n# Nodes    - %s\nTtl Cores  - %s\nTtl RAM    - %s GiB\nAvg Cores  - %s\nAvg RAM    - %s GiB\n" \
+               "$count" "$total_cpu" "$total_mem_gb" "$avg_cpu" "$avg_mem_gb"
     fi
 }
 
@@ -142,7 +162,10 @@ elif [ "$FORMAT" == "csv" ]; then
     echo "Role,OS,NodeCount,TotalCores,AvgCores,TotalGiB,AvgGiB"
     process_node_data all; process_node_data manager; process_node_data worker
 else
-    process_node_data all; process_node_data manager; process_node_data worker
-    process_node_data all linux; process_node_data all windows
+    process_node_data all
+    process_node_data manager
+    process_node_data worker
+    process_node_data all linux
+    process_node_data all windows
     echo "=========================================="
 fi
