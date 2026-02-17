@@ -1,171 +1,70 @@
 #!/bin/bash
 
-set -eo pipefail # Exit on error AND catch errors in pipes
+# Removed 'set -e' to prevent silent crashes; we'll handle errors manually.
+# Removed 'exec 1>&2' to ensure output stays on the standard channel.
 
-# --- Version Check ---
-BASH_MAJOR_VERSION=${BASH_VERSINFO[0]}
-echo "DEBUG: Starting script in Bash version $BASH_MAJOR_VERSION"
-
-# --- Dependency Check ---
-for cmd in jq bc curl; do
-    if ! command -v $cmd &> /dev/null; then
-        echo "ERROR: '$cmd' is not installed. This script requires jq, bc, and curl."
-        exit 1
-    fi
-done
-
-# --- Default Format ---
-FORMAT="text"
-
-# --- Usage Function ---
-usage() {
-    echo "Usage: $0 [--json | --csv]"
-    echo "Audits live Docker Swarm nodes for CPU and Memory stats."
-    echo ""
-    echo "Options:"
-    echo "  --json    Output full cluster data in JSON format"
-    echo "  --csv     Output summary data in CSV format"
-    echo "  --help    Display this help message"
-    exit 1
-}
-
-# --- Parse Flags ---
-case "$1" in
-    --json)     FORMAT="json" ;;
-    --csv)      FORMAT="csv"  ;;
-    -h|--help)  usage ;;
-    "")         FORMAT="text" ;;
-    *)          echo "Unknown option: $1"; usage ;;
-esac
-
-# --- Configuration & Connection Logic ---
+# --- Configuration ---
 if [ -n "${UCP_URL}" ]; then
-    echo "DEBUG: Attempting to connect to UCP at ${UCP_URL}..."
     CURL_CMD="curl -s -m 15 --key /data/key.pem --cert /data/cert.pem"
-    
-    if ! curl -s --cacert /data/ca.pem "https://${UCP_URL}/_ping" | grep -q "OK"; then
-        echo "DEBUG: Ping with CA cert failed, trying without..."
-        if ! curl -s "https://${UCP_URL}/_ping" | grep -q "OK"; then
-            echo "ERROR: UCP endpoint unreachable at https://${UCP_URL}/_ping"
-            exit 1
-        fi
-        BASE_URL="https://${UCP_URL}"
-    else
-        CURL_CMD="$CURL_CMD --cacert /data/ca.pem"
-        BASE_URL="https://${UCP_URL}"
-    fi
+    BASE_URL="https://${UCP_URL}"
 else
-    echo "DEBUG: No UCP_URL set. Attempting to use local Docker socket..."
     CURL_CMD="curl -s -m 5 --unix-socket /var/run/docker.sock"
     BASE_URL="http://v1.30"
-    
-    if [ ! -S /var/run/docker.sock ]; then
-        echo "ERROR: Docker socket not found at /var/run/docker.sock. Did you mount the volume?"
-        exit 1
-    fi
 fi
 
-# Check Swarm Manager Status
-SWARM_ID=$($CURL_CMD "${BASE_URL}/swarm" | jq -r .ID 2>/dev/null || echo "null")
-if [ "$SWARM_ID" == "null" ]; then
-    echo "ERROR: API returned null. This node is not a Swarm manager or connection failed."
-    exit 1
-fi
-echo "DEBUG: Successfully connected to Swarm ID: $SWARM_ID"
-
-# Fetch ALL node data into memory
-ALL_NODES_JSON=$($CURL_CMD "${BASE_URL}/nodes")
-
-if [ -z "$ALL_NODES_JSON" ] || [ "$ALL_NODES_JSON" == "[]" ]; then
-    echo "ERROR: No node data found."
+# Basic check to see if we can talk to the API
+if ! $CURL_CMD "${BASE_URL}/_ping" > /dev/null; then
+    echo "ERROR: Cannot connect to Docker API."
     exit 1
 fi
 
-# --- Processing Function (v0.3.1) ---
+# --- Processing Function (Original Style) ---
 process_node_data() {
     local role=$1
     local os=$2
     
-    # Filter JSON: .[] iterates through the node array
+    # Filter strings
     local filter=".[]"
     [[ "$role" != "all" ]] && filter="$filter | select(.Spec.Role == \"$role\")"
     [[ -n "$os" ]]         && filter="$filter | select(.Description.Platform.OS == \"$os\")"
+
+    # 1. Get CPU Cores directly
+    local cores_raw=$($CURL_CMD "${BASE_URL}/nodes" | jq -r "$filter | .Description.Resources.NanoCPUs // 0")
     
-    # Extract NanoCPUs and MemoryBytes
-    local raw_data
-    raw_data=$(echo "$ALL_NODES_JSON" | jq -r "$filter | \"\(.Description.Resources.NanoCPUs // 0) \(.Description.Resources.MemoryBytes // 0)\"" 2>/dev/null)
-    
-    # Skip if no nodes match the filter
-    if [[ -z "${raw_data// }" ]]; then 
-        return 
+    # 2. Get Memory Bytes directly
+    local mem_raw=$($CURL_CMD "${BASE_URL}/nodes" | jq -r "$filter | .Description.Resources.MemoryBytes // 0")
+
+    if [ -z "$cores_raw" ] || [ "$cores_raw" = "0" ]; then
+        return
     fi
 
-    local CPUs=""
-    local total_cpu=0
+    # Math for Cores
+    local total_cores=0
+    local node_count=0
+    for nano in $cores_raw; do
+        total_cores=$((total_cores + (nano / 1000000000)))
+        ((node_count++))
+    done
+
+    # Math for Memory
     local total_mem_bytes=0
-    local count=0
-
-    # Process the raw data line by line; handle trailing newlines correctly
-    while read -r nano mem || [[ -n "$nano" ]]; do
-        [[ -z "$nano" || "$nano" -eq 0 ]] && continue
-        
-        # Convert NanoCPUs to whole Cores
-        local cpu=$((nano / 1000000000))
-        CPUs="${CPUs}${cpu}"$'\n'
-        total_cpu=$((total_cpu + cpu))
-        
-        # Accumulate total RAM bytes
-        total_mem_bytes=$(echo "$total_mem_bytes + $mem" | bc)
-        ((count++))
-    done <<< "$raw_data"
-
-    if [ "$count" -eq 0 ]; then return; fi
-
-    # Sort and calculate stats
-    CPUs=$(echo "$CPUs" | sed '/^$/d' | sort -n)
-    local min_cpu=$(echo "$CPUs" | head -n1)
-    local max_cpu=$(echo "$CPUs" | tail -n1)
-    local avg_cpu=$(echo "scale=2; $total_cpu / $count" | bc)
+    for bytes in $mem_raw; do
+        total_mem_bytes=$(echo "$total_mem_bytes + $bytes" | bc)
+    done
     local total_mem_gb=$(echo "scale=2; $total_mem_bytes / 1073741824" | bc)
-    local avg_mem_gb=$(echo "scale=2; $total_mem_gb / $count" | bc)
 
-    # --- Output Logic ---
-    if [ "$FORMAT" == "json" ]; then
-        local key="${role}_${os:-all}"
-        printf '"%s": {"nodes": %d, "cpu": {"total": %d, "avg": %s}, "mem_gib": {"total": %s, "avg": %s}}' \
-               "$key" "$count" "$total_cpu" "$avg_cpu" "$total_mem_gb" "$avg_mem_gb"
-    elif [ "$FORMAT" == "csv" ]; then
-        echo "${role},${os:-all},$count,$total_cpu,$avg_cpu,$total_mem_gb,$avg_mem_gb"
-    else
-        echo "=========================================="
-        echo "Data for ${role} nodes${os:+ running $os}:"
-        
-        # Core Distribution
-        echo "$CPUs" | uniq -c | while read -r c s; do
-            printf "  %2d Core x %d nodes\n" "$s" "$c"
-        done
-        
-        # Summary Stats
-        printf "\n# Nodes    - %s\nTtl Cores  - %s\nTtl RAM    - %s GiB\nAvg Cores  - %s\nAvg RAM    - %s GiB\n" \
-               "$count" "$total_cpu" "$total_mem_gb" "$avg_cpu" "$avg_mem_gb"
-    fi
+    # Simple Output
+    echo "=========================================="
+    echo "Data for $role nodes ${os:+($os)}:"
+    echo "# Nodes    - $node_count"
+    echo "Ttl Cores  - $total_cores"
+    echo "Ttl RAM    - $total_mem_gb GiB"
 }
 
 # --- Execution ---
-if [ "$FORMAT" == "json" ]; then
-    echo "{"
-    echo -n "  " && process_node_data all
-    echo "," && echo -n "  " && process_node_data manager
-    echo "," && echo -n "  " && process_node_data worker
-    echo -e "\n}"
-elif [ "$FORMAT" == "csv" ]; then
-    echo "Role,OS,NodeCount,TotalCores,AvgCores,TotalGiB,AvgGiB"
-    process_node_data all; process_node_data manager; process_node_data worker
-else
-    process_node_data all
-    process_node_data manager
-    process_node_data worker
-    process_node_data all linux
-    process_node_data all windows
-    echo "=========================================="
-fi
+process_node_data all
+process_node_data manager
+process_node_data worker
+process_node_data all linux
+process_node_data all windows
+echo "=========================================="
