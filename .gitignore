@@ -1,1 +1,34 @@
+# --- Project Specifics ---
+# Ignore the generated inventory CSV
+mke_inventory.csv
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+bin/
+lib/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.installed.cfg
+*.egg
+
+# --- Docker ---
+# If you decide to use a docker-compose file later
+.docker/
+
+# --- Operating System ---
+.DS_Store
+Thumbs.db
+
+# --- IDEs ---
+.vscode/
+.idea/
 *.swp
+*.swo

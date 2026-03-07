@@ -1,58 +1,67 @@
-# mirantis/audit-cluster
+# MKE Inventory Tool (v2.0)
 
-Docker image for auditing a Swarm/UCP cluster to return the core counts and other sizing stats based on `alpine:latest`.
+This tool provides a lightweight, containerized way to extract a hardware and role inventory from a **Mirantis Kubernetes Engine (MKE) 3.8** cluster. 
 
-To pull this image:
-`docker pull mirantis/audit-cluster`
+It connects to the MKE API, retrieves node metadata (CPU, RAM, Role, and Orchestrator status), and exports the results to a clean CSV file.
 
-## v0.2 Enhancements
-* **Performance Optimization**: API calls are now bundled, fetching all node data in a single request to reduce network overhead.
-* **Output Formats**: Added support for `--json` and `--csv` flags for both live audit and support dump scripts.
-* **Cross-Platform Support**: Optimized for both modern Linux (Bash 4+) and legacy macOS (Bash 3.2).
-* **CLI Options**: Integrated a usage menu and flag parsing for better usability.
-* **Memory**: Adds output for node memory
+## Features
+* **No Local Dependencies:** Runs entirely inside Docker; no Python or `requests` library needed on your host.
+* **Automated Conversion:** Converts Raw `NanoCPUs` to Cores and `Bytes` to `GB`.
+* **Orchestrator Aware:** Identifies if a node is running Kubernetes or Swarm based on MKE-specific labels.
 
-## Example Usage
+---
 
-There are three methods to run this audit:
+## Prerequisites
+* **Docker** installed on your machine.
+* **Network access** to an MKE Manager node (via HTTPS).
+* **MKE Admin Credentials** (Username and Password).
 
-1. [**On the cluster**](#on-the-cluster) - Run it directly on a manager via the Docker socket.
-2. [**On a local engine**](#on-a-local-engine) - Communicate to UCP APIs using a client bundle.
-3. [**From a UCP support dump**](#from-a-ucp-support-dump) - Analyze static files locally using the provided script.
+---
 
-### CLI Flags (v0.2)
-Both `swarm-core_audit.sh` and `support_dump_count_cores.sh` support the following:
-* `--json`: Output full cluster data in JSON format.
-* `--csv`: Output summary data in CSV format.
-* `--help`: Display the usage menu.
+## Getting Started
 
-### On the cluster
-
-1. Load a UCP client bundle (or skip the bundle and run directly on a manager).
-2. Run the container:
-
-    ```bash
-    docker run -t --rm --name audit-cluster \
-      -v /var/run/docker.sock:/var/run/docker.sock \
-      -e affinity:container==ucp-controller \
-      mirantis/audit-cluster
-    ```
-
-### On a local engine
-
-1. Find your UCP URL and the local path to your extracted client bundle.
-2. Run the container locally, updating `UCP_URL` and the volume path:
-
-    ```bash
-    docker run -t --rm --name audit-cluster \
-      -e UCP_URL="ucp.example.com" \
-      -v /path/to/your/client/bundle:/data:ro \
-      mirantis/audit-cluster
-    ```
-
-### From a UCP support dump
-
-Analyze static files from a support dump locally. This is useful when API access is restricted.
+### 1. Build the Image
+From the root of the `mcr-cluster-config` directory, build the Docker image:
 
 ```bash
-./support_dump_count_cores.sh --csv > cluster_report.csv
+docker build -t mke-inventory-tool:2.0 .
+```
+
+### 2. Run the Inventory Export
+To run the tool and save the CSV to your current directory, use the following command.  Replace the environment variables with your cluster details:
+```bash
+docker run --rm \
+  -e MKE_HOST="<MKE_MANAGER_IP_OR_FQDN>" \
+  -e MKE_USER="<ADMIN_USERNAME>" \
+  -e MKE_PASSWORD="<ADMIN_PASSWORD>" \
+  -v "$(pwd)":/app \
+  mke-inventory-tool:2.0
+```
+
+### 3. Review the Results
+Once the container finishes, you will find a file named mke_inventory.csv in your folder.  The CSV includes:
+* **Node_ID**: The unique Swarm ID.
+* **Hostname**: The system hostname.
+* **Role**: Manager or Worker.
+* **CPUs**: Total core count.
+* **RAM_GB**: Total memory in Gigabytes.
+* **State**: Current node health (e.g. ```ready```).
+* ** Is_K8s**: Boolean (True/False) indicating if the node is a Kubernetes worker.
+
+Troubleshooting
+Connection Refused: Ensure the MKE_HOST is reachable from your Docker container and that you haven't included https:// in the environment variable (the script adds it automatically).
+
+SSL Warnings: The tool is configured to ignore self-signed certificate warnings commonly found in MKE environments.
+
+Auth Failure: Verify that the user has Full Control or Admin permissions within MKE.
+
+Development & Branching
+This version is part of the 2.0 release branch.
+To contribute or modify:
+
+Bash
+git checkout 2.0
+# Make changes
+git add .
+git commit -m "Updated inventory logic"
+git push origin 2.0
