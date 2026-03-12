@@ -1,6 +1,7 @@
 # --- Project Specifics ---
 # Ignore the generated inventory CSV
 mke_inventory.csv
+mke_cluster_summary.csv
 
 # --- Python ---
 __pycache__/
