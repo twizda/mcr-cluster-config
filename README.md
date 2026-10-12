@@ -1,4 +1,4 @@
-# mirantis/audit-cluster
+# mirantis/mcr-cluster-config
 
 Docker image for auditing a Swarm/UCP cluster to return the core counts and other sizing stats based on `alpine:latest`.
 
