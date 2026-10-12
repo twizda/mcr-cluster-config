@@ -3,7 +3,9 @@
 Docker image for auditing a Swarm/UCP cluster to return the core counts and other sizing stats based on `alpine:latest`.
 
 To pull this image:
-`docker pull mirantis/audit-cluster`
+`docker pull twizda/mcr-cluster-config`
+
+> **Note:** This project was previously published as `mirantis/audit-cluster`. That image is no longer updated; use `twizda/mcr-cluster-config` instead.
 
 ## v0.2 Enhancements
 * **Performance Optimization**: API calls are now bundled, fetching all node data in a single request to reduce network overhead.
@@ -20,11 +22,19 @@ There are three methods to run this audit:
 2. [**On a local engine**](#on-a-local-engine) - Communicate to UCP APIs using a client bundle.
 3. [**From a UCP support dump**](#from-a-ucp-support-dump) - Analyze static files locally using the provided script.
 
-### CLI Flags (v0.2)
-Both `swarm-core_audit.sh` and `support_dump_count_cores.sh` support the following:
-* `--json`: Output full cluster data in JSON format.
-* `--csv`: Output summary data in CSV format.
+### CLI Flags
+Both `swarm-core-audit.sh` (the container's entrypoint) and `support-dump-count-cores.sh` support the following:
+* `--json`: Output the summary in JSON format.
+* `--csv`: Output the summary in CSV format.
 * `--help`: Display the usage menu.
+
+When running the container, add the flag after the image name. Drop `-t` when redirecting output to a file, otherwise the file gets Windows-style (CRLF) line endings:
+
+```bash
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock twizda/mcr-cluster-config --csv > cluster_report.csv
+```
+
+In CSV and JSON output, every group (all, manager, worker, linux, windows) is included, even when it has zero nodes, so the columns stay consistent between clusters.
 
 ### On the cluster
 
@@ -32,10 +42,10 @@ Both `swarm-core_audit.sh` and `support_dump_count_cores.sh` support the followi
 2. Run the container:
 
     ```bash
-    docker run -t --rm --name audit-cluster \
+    docker run -t --rm --name mcr-cluster-config \
       -v /var/run/docker.sock:/var/run/docker.sock \
       -e affinity:container==ucp-controller \
-      mirantis/audit-cluster
+      twizda/mcr-cluster-config
     ```
 
 ### On a local engine
@@ -44,10 +54,10 @@ Both `swarm-core_audit.sh` and `support_dump_count_cores.sh` support the followi
 2. Run the container locally, updating `UCP_URL` and the volume path:
 
     ```bash
-    docker run -t --rm --name audit-cluster \
+    docker run -t --rm --name mcr-cluster-config \
       -e UCP_URL="ucp.example.com" \
       -v /path/to/your/client/bundle:/data:ro \
-      mirantis/audit-cluster
+      twizda/mcr-cluster-config
     ```
 
 ### From a UCP support dump
@@ -55,4 +65,4 @@ Both `swarm-core_audit.sh` and `support_dump_count_cores.sh` support the followi
 Analyze static files from a support dump locally. This is useful when API access is restricted.
 
 ```bash
-./support_dump_count_cores.sh --csv > cluster_report.csv
+./support-dump-count-cores.sh --csv > cluster_report.csv
