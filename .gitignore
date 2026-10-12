@@ -3,6 +3,11 @@
 mke_inventory.csv
 mke_cluster_summary.csv
 
+# --- Credentials ---
+*.pem
+mke_password*
+*.env
+
 # --- Python ---
 __pycache__/
 *.py[cod]
