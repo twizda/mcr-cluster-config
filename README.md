@@ -91,5 +91,7 @@ FATA[0000] Missing docker.sock. You must run the container with "-v /var/run/doc
 
 Analyze static files from a support dump locally. This is useful when API access is restricted.
 
+Run the script from the directory where the support dump was extracted. By default it prints a core-distribution table and a summary table, using the same log format as the container. It needs `bash`, `awk` and `bc`, and works with the bash 3.2 that ships with macOS.
+
 ```bash
 ./support-dump-count-cores.sh --csv > cluster_report.csv
