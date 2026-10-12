@@ -1,3 +1,13 @@
 .git
 .gitignore
 README.md
+.env
+*.env
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.csv
+*.pem
+requirements.in
