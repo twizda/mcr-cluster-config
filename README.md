@@ -1,4 +1,4 @@
-# MKE Inventory Tool (v3.0)
+# mirantis/mcr-cluster-config: MKE Inventory Tool (v3.0)
 
 This tool provides a lightweight, containerized way to extract a cluster inventory summary from a **Mirantis Kubernetes Engine (MKE) 3.8** cluster.
 
