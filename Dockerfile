@@ -2,7 +2,7 @@ FROM alpine:latest
 
 # Use LABEL to provide maintainer information and other metadata
 LABEL maintainer="Tom Wizda <twizda@mirantis.com>" \
-      version="0.3.1" \
+      version="0.3.2" \
       description="Docker Swarm CPU and Memory checking tool"
 
 # Added 'bc' which is required for memory and CPU math
