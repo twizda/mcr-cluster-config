@@ -5,6 +5,8 @@ Docker image for auditing a Swarm/UCP cluster to return the core counts and othe
 To pull this image:
 `docker pull mirantis/audit-cluster`
 
+> **Note:** The project has been renamed to `mcr-cluster-config`, but the image is still published on Docker Hub as `mirantis/audit-cluster`. Use that name in `docker pull` and `docker run` commands.
+
 ## v0.2 Enhancements
 * **Performance Optimization**: API calls are now bundled, fetching all node data in a single request to reduce network overhead.
 * **Output Formats**: Added support for `--json` and `--csv` flags for both live audit and support dump scripts.
@@ -32,7 +34,7 @@ Both `swarm-core_audit.sh` and `support_dump_count_cores.sh` support the followi
 2. Run the container:
 
     ```bash
-    docker run -t --rm --name audit-cluster \
+    docker run -t --rm --name mcr-cluster-config \
       -v /var/run/docker.sock:/var/run/docker.sock \
       -e affinity:container==ucp-controller \
       mirantis/audit-cluster
@@ -44,7 +46,7 @@ Both `swarm-core_audit.sh` and `support_dump_count_cores.sh` support the followi
 2. Run the container locally, updating `UCP_URL` and the volume path:
 
     ```bash
-    docker run -t --rm --name audit-cluster \
+    docker run -t --rm --name mcr-cluster-config \
       -e UCP_URL="ucp.example.com" \
       -v /path/to/your/client/bundle:/data:ro \
       mirantis/audit-cluster
