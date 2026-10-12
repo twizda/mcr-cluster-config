@@ -36,6 +36,33 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock twizda/mcr-cluster-
 
 In CSV and JSON output, every group (all, manager, worker, linux, windows) is included, even when it has zero nodes, so the columns stay consistent between clusters.
 
+### Example output
+By default, the audit prints a table. Progress and error messages are written to stderr in the standard Mirantis log format (`INFO`, `WARN`, `FATA`), so redirecting `--csv` or `--json` output to a file captures only the data. With `-t`, levels are colored (cyan, yellow and red); set `NO_COLOR=1` to turn colors off.
+
+```text
+INFO[0000] Connected to the Docker API via /var/run/docker.sock
+INFO[0000] Cluster ID: ym2kpp6s655tvztn3yblhr12t
+INFO[0000] Retrieved 2 nodes
+
++------------+-------+-------------+-----------------+
+| Node Group | Nodes | Total Cores | Total RAM (GiB) |
++------------+-------+-------------+-----------------+
+| Managers   |     1 |          14 |            7.74 |
+| Workers    |     1 |          14 |            7.74 |
++------------+-------+-------------+-----------------+
+| Linux      |     2 |          28 |           15.49 |
+| Windows    |     0 |           0 |            0.00 |
++------------+-------+-------------+-----------------+
+| Total      |     2 |          28 |           15.49 |
++------------+-------+-------------+-----------------+
+```
+
+If the container can't reach the API, it exits with an error such as:
+
+```text
+FATA[0000] Missing docker.sock. You must run the container with "-v /var/run/docker.sock:/var/run/docker.sock" or set UCP_URL with a client bundle mounted at /data
+```
+
 ### On the cluster
 
 1. Load a UCP client bundle (or skip the bundle and run directly on a manager).
@@ -63,6 +90,8 @@ In CSV and JSON output, every group (all, manager, worker, linux, windows) is in
 ### From a UCP support dump
 
 Analyze static files from a support dump locally. This is useful when API access is restricted.
+
+Run the script from the directory where the support dump was extracted. By default it prints a core-distribution table and a summary table, using the same log format as the container. It needs `bash`, `awk` and `bc`, and works with the bash 3.2 that ships with macOS.
 
 ```bash
 ./support-dump-count-cores.sh --csv > cluster_report.csv
