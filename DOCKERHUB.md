@@ -106,5 +106,5 @@ If you only have a UCP support dump, use [`support-dump-count-cores.sh`](https:/
 ## Security
 
 - Docker Scout reports **0 known vulnerabilities** for `0.5.0` (amd64 and arm64).
-- The container runs as root, because it needs to read `/var/run/docker.sock`. It only sends read-only `GET` requests (`/_ping`, `/nodes`, `/info`).
+- The container runs as root, because it needs to read `/var/run/docker.sock`. It only sends read-only `GET` requests (`/_ping`, `/info`, `/version`, `/nodes`, `/services`).
 - Report security issues through [GitHub](https://github.com/twizda/mcr-cluster-config/issues).
