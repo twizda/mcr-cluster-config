@@ -22,20 +22,22 @@ fatal() { log "$C_FATA" "FATA" "$*"; exit 1; }
 
 # --- Usage Function ---
 usage() {
-    echo "Usage: $0 [--json | --csv]"
+    echo "Usage: $0 [--json | --csv | --nodes-csv]"
     echo "Audits Docker Swarm node sizing from a ucp-nodes.txt file."
     echo "Run it from the directory where the support dump was extracted."
     echo ""
     echo "Options:"
-    echo "  --json    Output summary in JSON format"
-    echo "  --csv     Output summary in CSV format"
-    echo "  --help    Display this help message"
+    echo "  --json       Output summary (and per-node details, if jq is installed) in JSON format"
+    echo "  --csv        Output summary in CSV format"
+    echo "  --nodes-csv  Output per-node details in CSV format (requires jq)"
+    echo "  --help       Display this help message"
 }
 
 # --- Parse Flags ---
 case "$1" in
     --json)     FORMAT="json" ;;
     --csv)      FORMAT="csv"  ;;
+    --nodes-csv) FORMAT="nodes-csv" ;;
     -h|--help)  usage; exit 0 ;;
     "")         FORMAT="text" ;;
     *)          fatal "Unknown option: $1. Run with --help to see the supported options." ;;
@@ -46,6 +48,79 @@ for cmd in bc awk; do
     command -v "$cmd" > /dev/null 2>&1 || fatal "Required command '$cmd' is not installed."
 done
 
+# --- Per-node details ---
+# Shared with swarm-core-audit.sh (keep in sync): turns a node list into one object per node.
+# MKE adds the orchestrator, collection and health details (Status.Message) to the node list.
+NODE_JQ='
+def two: ((. // 0) * 100 | floor) as $c | "\($c / 100 | floor).\($c % 100 | tostring | if length == 1 then "0" + . else . end)";
+def lbl($k): (.Spec.Labels // {})[$k];
+[ .[] | {
+    hostname:       (.Description.Hostname // ""),
+    id:             .ID,
+    role:           (if .ManagerStatus.Leader == true then "leader" else (.Spec.Role // "") end),
+    availability:   (.Spec.Availability // ""),
+    state:          (.Status.State // ""),
+    addr:           (.Status.Addr // ""),
+    os:             (.Description.Platform.OS // ""),
+    arch:           (.Description.Platform.Architecture // ""),
+    engine:         (.Description.Engine.EngineVersion // ""),
+    cpus:           ((.Description.Resources.NanoCPUs // 0) / 1000000000 | floor),
+    mem_gib:        ((.Description.Resources.MemoryBytes // 0) / 1073741824 | two),
+    orchestrators:  [ (if lbl("com.docker.ucp.orchestrator.swarm") == "true" then "swarm" else empty end),
+                      (if lbl("com.docker.ucp.orchestrator.kubernetes") == "true" then "kube" else empty end) ],
+    collection:     (lbl("com.docker.ucp.access.label") // ""),
+    created:        ((.CreatedAt // "")[0:19]),
+    updated:        ((.UpdatedAt // "")[0:19]),
+    status_message: (.Status.Message // "")
+} ] | sort_by((if .role == "leader" then 0 elif .role == "manager" then 1 else 2 end), .hostname)'
+
+# Empty values are shown as "-" in the table only; CSV and JSON keep them empty
+node_table_tsv() {
+    printf 'Hostname\tNode ID\tRole\tAvail\tState\tAddress\tOS/Arch\tEngine\tvCPUs\tRAM (GiB)\tOrchestrators\tCollection\tStatus\n'
+    echo "$1" | jq -r "$NODE_JQ"' | .[] | [.hostname, .id[0:10], .role, .availability, .state, .addr,
+        (.os + "/" + .arch), .engine, (.cpus | tostring), .mem_gib, (.orchestrators | join("+")),
+        .collection, .status_message] | map(if . == "" or . == "/" then "-" else . end) | @tsv'
+}
+
+node_csv() {
+    echo "$1" | jq -r --arg cid "$2" '["ClusterID","Hostname","NodeID","Role","Availability","State","Address","OS","Arch",
+        "EngineVersion","vCPUs","RAM_GiB","Orchestrators","Collection","Created","Updated","StatusMessage"],
+        ('"$NODE_JQ"' | .[] | [$cid, .hostname, .id, .role, .availability, .state, .addr, .os, .arch, .engine,
+        .cpus, (.mem_gib | tonumber), (.orchestrators | join("+")), .collection, .created, .updated, .status_message]) | @csv'
+}
+
+node_json() {
+    echo "$1" | jq -c "$NODE_JQ"' | map(.mem_gib |= tonumber)'
+}
+
+# Prints tab-separated rows (first row is the header) as a bordered table.
+# $1 is a comma-separated list of right-aligned column numbers. Long cells are truncated.
+print_table() {
+    awk -F'\t' -v right="$1" -v maxw=60 '
+        BEGIN { n = split(right, r, ","); for (i = 1; i <= n; i++) ra[r[i]] = 1 }
+        {
+            for (i = 1; i <= NF; i++) {
+                v = $i
+                if (length(v) > maxw) v = substr(v, 1, maxw - 3) "..."
+                cell[NR, i] = v
+                if (length(v) > w[i]) w[i] = length(v)
+            }
+            if (NF > nf) nf = NF
+        }
+        END {
+            sep = "+"
+            for (i = 1; i <= nf; i++) { s = ""; for (j = 0; j < w[i] + 2; j++) s = s "-"; sep = sep s "+" }
+            print sep
+            for (row = 1; row <= NR; row++) {
+                line = "|"
+                for (i = 1; i <= nf; i++) line = line " " sprintf((ra[i] ? "%" : "%-") w[i] "s", cell[row, i]) " |"
+                print line
+                if (row == 1) print sep
+            }
+            print sep
+        }'
+}
+
 # Verify necessary files exist
 for f in ucp-nodes.txt ucp-instance-id.txt; do
     [ -f "$f" ] || fatal "Unable to find $f in $(pwd). Run this script from the directory where the support dump was extracted."
@@ -54,6 +129,22 @@ done
 CLUSTER_ID=$(tr -d '[:space:]' < ucp-instance-id.txt)
 info "Reading support dump from $(pwd)"
 info "Cluster ID: ${CLUSTER_ID}"
+
+# Per-node details need jq and a JSON node list; the summary works without them
+NODES_JSON=""
+if ! command -v jq > /dev/null 2>&1; then
+    [ "$FORMAT" == "nodes-csv" ] && fatal "--nodes-csv requires jq. Install jq and try again."
+    warn "jq is not installed; per-node details are skipped"
+elif jq -e 'type == "array"' ucp-nodes.txt > /dev/null 2>&1; then
+    NODES_JSON=$(cat ucp-nodes.txt)
+    # Flag nodes that are not ready or not active, as "docker node ls" would show them
+    echo "$NODES_JSON" | jq -r '.[] | select((.Status.State // "ready") != "ready" or (.Spec.Availability // "active") != "active")
+        | "\(.Description.Hostname // .ID): state \(.Status.State), availability \(.Spec.Availability)\(if (.Status.Message // "") != "" then " (" + .Status.Message + ")" else "" end)"' \
+        | while read -r line; do warn "Node ${line}"; done
+else
+    [ "$FORMAT" == "nodes-csv" ] && fatal "ucp-nodes.txt is not a JSON node list; per-node details are unavailable."
+    warn "ucp-nodes.txt is not a JSON node list; per-node details are skipped"
+fi
 
 # Extract CPUs and Memory
 # We clean the output to ensure only raw numbers remain
@@ -106,12 +197,22 @@ avg_mem_gb=$(printf '%.2f' "$(echo "scale=2; $total_mem_gb / $count" | bc)")
 
 # --- Output Logic ---
 if [ "$FORMAT" == "json" ]; then
-    printf '{"cluster_id": "%s", "nodes": %d, "cpu": {"total": %d, "avg": %s}, "mem_gib": {"total": %s, "avg": %s}}\n' \
-           "$CLUSTER_ID" "$count" "$total_cpu" "$avg_cpu" "$total_mem_gb" "$avg_mem_gb"
+    node_details=""
+    [ -n "$NODES_JSON" ] && node_details=", \"node_details\": $(node_json "$NODES_JSON")"
+    printf '{"cluster_id": "%s", "nodes": %d, "cpu": {"total": %d, "avg": %s}, "mem_gib": {"total": %s, "avg": %s}%s}\n' \
+           "$CLUSTER_ID" "$count" "$total_cpu" "$avg_cpu" "$total_mem_gb" "$avg_mem_gb" "$node_details"
 elif [ "$FORMAT" == "csv" ]; then
     echo "ClusterID,NodeCount,TotalCores,AvgCores,TotalGiB,AvgGiB"
     echo "$CLUSTER_ID,$count,$total_cpu,$avg_cpu,$total_mem_gb,$avg_mem_gb"
+elif [ "$FORMAT" == "nodes-csv" ]; then
+    node_csv "$NODES_JSON" "$CLUSTER_ID"
 else
+    # Per-node details
+    if [ -n "$NODES_JSON" ]; then
+        echo ""
+        node_table_tsv "$NODES_JSON" | print_table 9,10
+    fi
+
     # Core distribution
     dist_border="+-------------+-------+"
     echo ""
