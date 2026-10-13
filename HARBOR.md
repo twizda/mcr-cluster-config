@@ -10,7 +10,8 @@ Source code, issues and release notes: **https://github.com/twizda/mcr-cluster-c
 
 | Tag | Notes |
 |---|---|
-| `0.5.2`, `latest` | Singular wording ("1 node") and OS/Arch display fixes |
+| `0.5.3`, `latest` | Clearer MKE connection messages; hints for client-bundle and SELinux setup errors |
+| `0.5.2` | Singular wording ("1 node") and OS/Arch display fixes |
 
 Tags are built for `linux/amd64` and `linux/arm64`, with build provenance and an SBOM attached. Older releases are available on [Docker Hub](https://hub.docker.com/r/twizda/mcr-cluster-config/tags).
 
@@ -20,7 +21,7 @@ This is a private project. Log in first:
 
 ```bash
 docker login registry.ci.mirantis.com
-docker pull registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config:0.5.2
+docker pull registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config:0.5.3
 ```
 
 ## Quick start
@@ -107,7 +108,7 @@ docker run --rm -e UCP_URL="mke.example.com" -v /path/to/bundle:/data:ro \
 
 ## No API access?
 
-If you only have an MKE support dump, use [`support-dump-count-cores.sh`](https://github.com/twizda/mcr-cluster-config/blob/v0.5.2/support-dump-count-cores.sh) from the GitHub repository. Run it in the extracted dump directory. It produces the same per-node table and totals, without Docker. Per-node details need `jq`.
+If you only have an MKE support dump, use [`support-dump-count-cores.sh`](https://github.com/twizda/mcr-cluster-config/blob/v0.5.3/support-dump-count-cores.sh) from the GitHub repository. Run it in the extracted dump directory. It produces the same per-node table and totals, without Docker. Per-node details need `jq`.
 
 ## Security
 
