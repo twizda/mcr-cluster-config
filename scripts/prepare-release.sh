@@ -1,6 +1,6 @@
 #!/bin/bash
-# Prepares a release: bumps the Dockerfile version label and updates DOCKERHUB.md
-# (new tags-table row marked latest, support-dump script link). Commit the result in a
+# Prepares a release: bumps the Dockerfile version label and updates DOCKERHUB.md and HARBOR.md
+# (new tags-table row marked latest, support-dump script link, HARBOR.md pull example). Commit the result in a
 # pull request; after it merges, push an annotated tag to publish:
 #   git tag -a v<version> -m "Release v<version>: <title>" && git push origin v<version>
 #
@@ -34,20 +34,24 @@ fi
 # Dockerfile version label
 sed -i.bak "s/version=\"$current\"/version=\"$version\"/" Dockerfile && rm -f Dockerfile.bak
 
-# DOCKERHUB.md: move "latest" to the new row, and point the support-dump link at the new tag
-awk -v v="$version" -v note="$note" '
-    /^\| `[0-9.]+`, `latest` \|/ { sub(/, `latest`/, "") }
-    { print }
-    /^\| Tag \| Notes \|$/ { header = 1; next }
-    header && /^\|---\|---\|$/ { printf "| `%s`, `latest` | %s |\n", v, note; header = 0 }
-' DOCKERHUB.md > DOCKERHUB.md.new
-sed "s|/blob/v[0-9.]*/support-dump-count-cores.sh|/blob/v$version/support-dump-count-cores.sh|" DOCKERHUB.md.new > DOCKERHUB.md
-rm -f DOCKERHUB.md.new
-
-grep -q "^| \`$version\`, \`latest\` |" DOCKERHUB.md || { echo "Failed to update the DOCKERHUB.md tags table." >&2; exit 1; }
+# DOCKERHUB.md and HARBOR.md: move "latest" to a new row in the tags table, and point the
+# support-dump link and HARBOR.md's pull example at the new version
+for f in DOCKERHUB.md HARBOR.md; do
+    awk -v v="$version" -v note="$note" '
+        /^\| `[0-9.]+`, `latest` \|/ { sub(/, `latest`/, "") }
+        { print }
+        /^\| Tag \| Notes \|$/ { header = 1; next }
+        header && /^\|---\|---\|$/ { printf "| `%s`, `latest` | %s |\n", v, note; header = 0 }
+    ' "$f" > "$f.new"
+    sed -e "s|/blob/v[0-9.]*/support-dump-count-cores.sh|/blob/v$version/support-dump-count-cores.sh|" \
+        -e "s|\(docker pull registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config:\)[0-9.]*|\1$version|" \
+        "$f.new" > "$f"
+    rm -f "$f.new"
+    grep -q "^| \`$version\`, \`latest\` |" "$f" || { echo "Failed to update the $f tags table." >&2; exit 1; }
+done
 
 echo "Prepared release $version (was $current):"
-git --no-pager diff --stat -- Dockerfile DOCKERHUB.md
+git --no-pager diff --stat -- Dockerfile DOCKERHUB.md HARBOR.md
 echo ""
 echo "Next: open a pull request with these changes. After it merges, publish with:"
 echo "  git checkout main && git pull"

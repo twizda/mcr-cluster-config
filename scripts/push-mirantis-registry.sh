@@ -29,3 +29,6 @@ for tag in "${version}" latest; do
     fi
     echo "ok: ${DST}:${tag} = ${src_digest}"
 done
+
+echo ""
+echo "Next: paste HARBOR.md into the repository's Info tab in Harbor (Projects > pvt-twizda > mcr-cluster-config)."
