@@ -56,6 +56,9 @@ sleep 3
 echo "# via docker.sock"
 audit "$P-mgr-sock"
 assert_equals "text exits 0" "$RC" "0"
+VERSION=$(sed -n 's/^ENV MCR_CLUSTER_CONFIG_VERSION=//p' "$REPO/Dockerfile")
+assert_contains "first line is the version from the Dockerfile" "$(echo "$ERR" | head -1)" "] mcr-cluster-config version $VERSION"
+assert_equals "image label matches the version" "$(docker image inspect -f '{{index .Config.Labels "version"}}' "$IMAGE")" "$VERSION"
 assert_contains "table header" "$OUT" "| Hostname   | Node ID    | Role   | Avail  | State | Address"
 assert_contains "Operating System column" "$OUT" "| OS/Arch"
 assert_not_contains "Orchestrators column removed" "$OUT" "Orchestrators"
@@ -113,6 +116,23 @@ audit "$P-mock-sock" --json
 assert_equals "--json operating systems" "$(echo "$OUT" | jq -c '[.nodes[].operating_system]' 2>&1)" \
     '["Red Hat Enterprise Linux 8.10 (Ootpa)","Red Hat Enterprise Linux 8.10 (Ootpa)","Windows Server 2022 Datacenter Version 2009 (OS Build 20348.2700)","Ubuntu 22.04.5 LTS"]'
 
+echo "# support dump script inside the image"
+dump() {
+    local errf; errf=$(mktemp)
+    OUT=$(docker run --rm -v "$TESTS/fixtures/$1":/dump:ro -w /dump --entrypoint support-dump-count-cores.sh "$IMAGE" "${@:2}" 2> "$errf"); RC=$?
+    ERR=$(cat "$errf"); rm -f "$errf"
+}
+for mode in text nodes-csv json; do
+    if [ "$mode" == "text" ]; then dump dump-mke; else dump dump-mke "--$mode"; fi
+    assert_equals "dump-mke $mode exits 0" "$RC" "0"
+    assert_equals "dump-mke $mode matches tests/expected (same as on the host)" "$OUT" "$(cat "$TESTS/expected/dump-mke.$mode.out")"
+done
+assert_contains "dump script: first line is the version" "$(echo "$ERR" | head -1)" "] mcr-cluster-config version $VERSION"
+dump dump-partial
+assert_contains "dump-partial: OS coverage warning in the image" "$ERR" "Operating system found for 1 of 4 nodes."
+dump dump-mke --xml
+assert_equals "dump script unknown option: exits 1" "$RC" "1"
+
 echo "# errors and options"
 audit ""
 assert_equals "no socket: exits 1" "$RC" "1"
@@ -126,5 +146,6 @@ audit "$P-mock-sock" --xml
 assert_equals "unknown option: exits 1" "$RC" "1"
 audit "$P-mock-sock" --help
 assert_equals "--help exits 0" "$RC" "0"
+assert_not_contains "--help prints no log lines" "$ERR$OUT" "mcr-cluster-config version"
 
 summary

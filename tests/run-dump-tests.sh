@@ -37,6 +37,7 @@ assert_not_contains "dump-mke: every node has an operating system" "$ERR" "Opera
 assert_contains "dump-mke: down node is reported" "$ERR" "] Node mke-wkr-01: state down, availability active (Calico CNI"
 assert_contains "dump-mke: drained node is reported" "$ERR" "Node mke-win-01: state ready, availability drain"
 assert_contains "dump-mke: singular/plural wording" "$ERR" "Found 4 nodes"
+assert_not_contains "no version line outside the image" "$ERR" "mcr-cluster-config version"
 run "$TESTS/fixtures/dump-partial"
 assert_contains "dump-partial: text docker info covers one node" "$ERR" "Operating system found for 1 of 4 nodes."
 run "$TESTS/fixtures/dump-legacy"

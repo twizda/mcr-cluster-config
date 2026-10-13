@@ -1,5 +1,5 @@
 #!/bin/bash
-# Prepares a release: bumps the Dockerfile version label and updates DOCKERHUB.md and HARBOR.md
+# Prepares a release: bumps the Dockerfile version and updates DOCKERHUB.md and HARBOR.md
 # (new tags-table row marked latest, support-dump script link, HARBOR.md pull example). Commit the result in a
 # pull request; after it merges, push an annotated tag to publish:
 #   git tag -a v<version> -m "Release v<version>: <title>" && git push origin v<version>
@@ -20,7 +20,7 @@ if git rev-parse -q --verify "refs/tags/v$version" > /dev/null; then
     exit 1
 fi
 
-current=$(sed -n 's/.*version="\([^"]*\)".*/\1/p' Dockerfile)
+current=$(sed -n 's/^ENV MCR_CLUSTER_CONFIG_VERSION=//p' Dockerfile)
 if [ "$current" = "$version" ]; then
     echo "Dockerfile is already at $version." >&2
     exit 1
@@ -31,8 +31,8 @@ if [ "$newest" != "$version" ]; then
     exit 1
 fi
 
-# Dockerfile version label
-sed -i.bak "s/version=\"$current\"/version=\"$version\"/" Dockerfile && rm -f Dockerfile.bak
+# Dockerfile version (ENV line; the image label is filled from it)
+sed -i.bak "s/^ENV MCR_CLUSTER_CONFIG_VERSION=.*/ENV MCR_CLUSTER_CONFIG_VERSION=$version/" Dockerfile && rm -f Dockerfile.bak
 
 # DOCKERHUB.md and HARBOR.md: move "latest" to a new row in the tags table, and point the
 # support-dump link and HARBOR.md's pull example at the new version
@@ -45,13 +45,17 @@ for f in DOCKERHUB.md HARBOR.md; do
     ' "$f" > "$f.new"
     sed -e "s|/blob/v[0-9.]*/support-dump-count-cores.sh|/blob/v$version/support-dump-count-cores.sh|" \
         -e "s|\(docker pull registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config:\)[0-9.]*|\1$version|" \
+        -e "s|\(mcr-cluster-config version \)[0-9.]*|\1$version|" \
         "$f.new" > "$f"
     rm -f "$f.new"
     grep -q "^| \`$version\`, \`latest\` |" "$f" || { echo "Failed to update the $f tags table." >&2; exit 1; }
 done
 
+# README: the version line in the example output
+sed -i.bak "s|\(mcr-cluster-config version \)[0-9.]*|\1$version|" README.md && rm -f README.md.bak
+
 echo "Prepared release $version (was $current):"
-git --no-pager diff --stat -- Dockerfile DOCKERHUB.md HARBOR.md
+git --no-pager diff --stat -- Dockerfile DOCKERHUB.md HARBOR.md README.md
 echo ""
 echo "Next: open a pull request with these changes. After it merges, publish with:"
 echo "  git checkout main && git pull"

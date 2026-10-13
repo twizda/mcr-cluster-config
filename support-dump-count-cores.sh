@@ -21,6 +21,9 @@ info()  { log "$C_INFO" "INFO" "$*"; }
 warn()  { log "$C_WARN" "WARN" "$*"; }
 fatal() { log "$C_FATA" "FATA" "$*"; exit 1; }
 
+# Logs the release version when running from the image (the Dockerfile sets it)
+log_version() { [ -n "${MCR_CLUSTER_CONFIG_VERSION}" ] && info "mcr-cluster-config version ${MCR_CLUSTER_CONFIG_VERSION}"; return 0; }
+
 # Prints a count with a singular or plural noun, e.g. "1 node", "2 nodes"
 plural() { if [ "$1" -eq 1 ]; then echo "$1 $2"; else echo "$1 ${2}s"; fi; }
 
@@ -48,6 +51,8 @@ case "$1" in
     "")         FORMAT="text" ;;
     *)          fatal "Unknown option: $1. Run with --help to see the supported options." ;;
 esac
+
+log_version
 
 # --- Dependency Check ---
 for cmd in bc awk; do
