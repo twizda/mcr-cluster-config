@@ -182,7 +182,7 @@ Both scripts contain the same logging and per-node code, between `# >>> shared:<
 ### Releases
 Releases are published by `.github/workflows/release.yml` when a `v0.x` tag is pushed.
 
-1. **Prepare.** Bump the version and update [DOCKERHUB.md](DOCKERHUB.md), then open a pull request with the result:
+1. **Prepare.** Bump the version and update [DOCKERHUB.md](DOCKERHUB.md) and [HARBOR.md](HARBOR.md), then open a pull request with the result:
 
     ```bash
     scripts/prepare-release.sh 0.5.2 "Short description for the Docker Hub tags table"
@@ -219,6 +219,8 @@ scripts/push-mirantis-registry.sh 0.5.2
 ```
 
 The script copies the published image to `registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config` without rebuilding it, so both platforms and the attestations are kept. It tags `<version>` and `latest`, then checks that both match Docker Hub.
+
+Then paste [HARBOR.md](HARBOR.md) into the repository's **Info** tab in Harbor. `prepare-release.sh` updates its tags table and version references alongside `DOCKERHUB.md`, but nothing updates Harbor automatically.
 
 To check the pipeline without publishing anything, run the **Release** workflow manually from the Actions tab. It builds both platforms and runs the tests, but skips every publishing step.
 
