@@ -52,32 +52,42 @@ The audit uses the same information as `docker info`, `docker version` and `dock
 | Role | `leader`, `manager` or `worker` |
 | Avail, State | Availability (active, pause, drain) and state (ready, down) |
 | Address | Node IP address |
-| OS/Arch, Engine | Platform and MCR engine version |
+| OS/Arch | Platform, for example `linux/x86_64` |
+| Operating System | The `Operating System:` line from `docker info` for that node, for example `Red Hat Enterprise Linux 8.10 (Ootpa)` |
+| Engine | MCR engine version |
 | vCPUs, RAM (GiB) | Node resources |
-| Orchestrators, Collection | MKE labels: `swarm` and/or `kube`, and the access collection (for example `/System`, `/Shared`) |
-| Status | Status message, for example MKE's `Healthy MKE manager` or the reason a node is down |
 
-Nodes that aren't `ready` and `active` are also reported as `WARN` messages. `--nodes-csv` and `--json` add each node's full ID and its created and updated times.
+`docker info` only describes the engine it's run against, so where the operating system comes from depends on how you run the audit:
 
-Uptime, OS release (for example RHEL 8.10), hypervisor and GPU aren't available from the node list, so they aren't collected.
+| Run mode | Nodes with an operating system |
+|---|---|
+| Through MKE (`UCP_URL` with a client bundle) | All nodes. MKE's `docker info` lists every node with its operating system. |
+| On a manager via `docker.sock` | Only the node the container runs on |
+| From a support dump | Every node with `docker info` output in the dump (text or JSON, matched by node name) |
+
+When some nodes have no operating system, the audit prints a `WARN` saying how many were found and why the rest are missing, and shows `-` for them.
+
+Nodes that aren't `ready` and `active` are also reported as `WARN` messages, with the node's status message. `--nodes-csv` adds each node's full ID and its created and updated times. `--json` also includes MKE's orchestrator labels (`swarm`, `kube`), access collection and each node's status message.
+
+Uptime, hypervisor and GPU aren't available from `docker info` or `docker node ls`, so they aren't collected.
 
 ### Example output
 By default, the audit prints a per-node table followed by a summary table. Progress and error messages are written to stderr in the standard Mirantis log format (`INFO`, `WARN`, `FATA`), so redirecting `--csv`, `--nodes-csv` or `--json` output to a file captures only the data. With `-t`, levels are colored (cyan, yellow and red); set `NO_COLOR=1` to turn colors off.
 
 ```text
-INFO[0000] Connected to the Docker API via /var/run/docker.sock
+INFO[0000] Connected to UCP at https://mke.example.com
 INFO[0000] Cluster ID: 4ysfudgvpfagt1yy0gwf9viqi
-INFO[0000] Connected node: mke-mgr-01, Red Hat Enterprise Linux 8.10 (Ootpa), kernel 4.18.0-553.el8_10.x86_64, engine 25.0.14m1
+INFO[0000] Connected node: mke-mgr-01, Red Hat Enterprise Linux 8.10 (Ootpa), kernel 4.18.0-553.el8_10.x86_64, engine ucp/3.8.8
 INFO[0000] MKE version: 3.8.8
 INFO[0000] Retrieved 2 nodes (managers: 1, workers: 1)
 WARN[0000] Node mke-wkr-01: state down, availability active (heartbeat failure)
 
-+------------+------------+--------+--------+-------+-----------+--------------+-----------+-------+-----------+---------------+------------+---------------------+
-| Hostname   | Node ID    | Role   | Avail  | State | Address   | OS/Arch      | Engine    | vCPUs | RAM (GiB) | Orchestrators | Collection | Status              |
-+------------+------------+--------+--------+-------+-----------+--------------+-----------+-------+-----------+---------------+------------+---------------------+
-| mke-mgr-01 | p8ntfkxhex | leader | active | ready | 10.0.0.11 | linux/x86_64 | 25.0.14m1 |     8 |     31.13 | swarm+kube    | /System    | Healthy MKE manager |
-| mke-wkr-01 | i7bni64o55 | worker | active | down  | 10.0.0.21 | linux/x86_64 | 25.0.14m1 |    12 |     62.38 | kube          | /Shared    | heartbeat failure   |
-+------------+------------+--------+--------+-------+-----------+--------------+-----------+-------+-----------+---------------+------------+---------------------+
++------------+------------+--------+--------+-------+-----------+--------------+---------------------------------------+-----------+-------+-----------+
+| Hostname   | Node ID    | Role   | Avail  | State | Address   | OS/Arch      | Operating System                      | Engine    | vCPUs | RAM (GiB) |
++------------+------------+--------+--------+-------+-----------+--------------+---------------------------------------+-----------+-------+-----------+
+| mke-mgr-01 | p8ntfkxhex | leader | active | ready | 10.0.0.11 | linux/x86_64 | Red Hat Enterprise Linux 8.10 (Ootpa) | 25.0.14m1 |     8 |     31.13 |
+| mke-wkr-01 | i7bni64o55 | worker | active | down  | 10.0.0.21 | linux/x86_64 | Red Hat Enterprise Linux 8.10 (Ootpa) | 25.0.14m1 |    12 |     62.38 |
++------------+------------+--------+--------+-------+-----------+--------------+---------------------------------------+-----------+-------+-----------+
 
 +------------+-------+-------------+-----------------+
 | Node Group | Nodes | Total Cores | Total RAM (GiB) |
@@ -92,7 +102,7 @@ WARN[0000] Node mke-wkr-01: state down, availability active (heartbeat failure)
 +------------+-------+-------------+-----------------+
 ```
 
-Status messages longer than 60 characters are shortened in the table; `--nodes-csv` and `--json` contain the full text.
+Values longer than 60 characters are shortened in the table; `--nodes-csv` and `--json` contain the full text.
 
 If the container can't reach the API, it exits with an error such as:
 
@@ -128,7 +138,7 @@ FATA[0000] Missing docker.sock. You must run the container with "-v /var/run/doc
 
 Analyze static files from a support dump locally. This is useful when API access is restricted.
 
-Run the script from the directory where the support dump was extracted. By default it prints the same per-node table as the container (read from the dump's `ucp-nodes.txt`), followed by a core-distribution table and a summary table. It needs `bash`, `awk` and `bc`, and works with the bash 3.2 that ships with macOS. Per-node details also need `jq`; without it, the script prints a warning and shows only the summary.
+Run the script from the directory where the support dump was extracted. By default it prints the same per-node table as the container (read from the dump's `ucp-nodes.txt`, with each node's operating system taken from any `docker info` output in the dump), followed by a core-distribution table and a summary table. It needs `bash`, `awk` and `bc`, and works with the bash 3.2 that ships with macOS. Per-node details also need `jq`; without it, the script prints a warning and shows only the summary.
 
 ```bash
 ./support-dump-count-cores.sh --csv > cluster_report.csv

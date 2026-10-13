@@ -48,48 +48,71 @@ for cmd in curl jq bc awk; do
 done
 
 # --- Per-node details ---
-# Shared with support-dump-count-cores.sh: turns a /nodes response into one object per node.
-# MKE adds the orchestrator, collection and health details (Status.Message) to the node list.
+# Shared with the other audit script (keep in sync): turns a node list into one object per node.
+# OS_MAP maps hostnames to the "Operating System" reported by docker info for that node.
+OS_MAP='{}'
+
+# Through MKE, docker info (/info) lists every node in SystemStatus, with the node's
+# docker info details in a "Labels" entry, e.g. "kernelversion=..., operatingsystem=..., ostype=linux"
+SYSTEMSTATUS_OS_JQ='
+reduce ((.SystemStatus // [])[] | select(type == "array" and length >= 2)) as $kv ({node: null, map: {}};
+    if ($kv[0] | test("^ [^ ]")) then .node = ($kv[0] | ltrimstr(" "))
+    elif (.node != null and ($kv[0] | test("Labels$"))) then
+        ([($kv[1] // "") | split(", ")[] | select(startswith("operatingsystem=")) | ltrimstr("operatingsystem=")] | first) as $os
+        | if $os then .map[.node] = $os else . end
+    else . end) | .map'
+
 NODE_JQ='
 def two: ((. // 0) * 100 | floor) as $c | "\($c / 100 | floor).\($c % 100 | tostring | if length == 1 then "0" + . else . end)";
 def lbl($k): (.Spec.Labels // {})[$k];
 [ .[] | {
-    hostname:       (.Description.Hostname // ""),
-    id:             .ID,
-    role:           (if .ManagerStatus.Leader == true then "leader" else (.Spec.Role // "") end),
-    availability:   (.Spec.Availability // ""),
-    state:          (.Status.State // ""),
-    addr:           (.Status.Addr // ""),
-    os:             (.Description.Platform.OS // ""),
-    arch:           (.Description.Platform.Architecture // ""),
-    engine:         (.Description.Engine.EngineVersion // ""),
-    cpus:           ((.Description.Resources.NanoCPUs // 0) / 1000000000 | floor),
-    mem_gib:        ((.Description.Resources.MemoryBytes // 0) / 1073741824 | two),
-    orchestrators:  [ (if lbl("com.docker.ucp.orchestrator.swarm") == "true" then "swarm" else empty end),
-                      (if lbl("com.docker.ucp.orchestrator.kubernetes") == "true" then "kube" else empty end) ],
-    collection:     (lbl("com.docker.ucp.access.label") // ""),
-    created:        ((.CreatedAt // "")[0:19]),
-    updated:        ((.UpdatedAt // "")[0:19]),
-    status_message: (.Status.Message // "")
+    hostname:         (.Description.Hostname // ""),
+    id:               .ID,
+    role:             (if .ManagerStatus.Leader == true then "leader" else (.Spec.Role // "") end),
+    availability:     (.Spec.Availability // ""),
+    state:            (.Status.State // ""),
+    addr:             (.Status.Addr // ""),
+    os:               (.Description.Platform.OS // ""),
+    arch:             (.Description.Platform.Architecture // ""),
+    operating_system: ($osmap[.Description.Hostname // ""] // ""),
+    engine:           (.Description.Engine.EngineVersion // ""),
+    cpus:             ((.Description.Resources.NanoCPUs // 0) / 1000000000 | floor),
+    mem_gib:          ((.Description.Resources.MemoryBytes // 0) / 1073741824 | two),
+    orchestrators:    [ (if lbl("com.docker.ucp.orchestrator.swarm") == "true" then "swarm" else empty end),
+                        (if lbl("com.docker.ucp.orchestrator.kubernetes") == "true" then "kube" else empty end) ],
+    collection:       (lbl("com.docker.ucp.access.label") // ""),
+    created:          ((.CreatedAt // "")[0:19]),
+    updated:          ((.UpdatedAt // "")[0:19]),
+    status_message:   (.Status.Message // "")
 } ] | sort_by((if .role == "leader" then 0 elif .role == "manager" then 1 else 2 end), .hostname)'
 
 # Empty values are shown as "-" in the table only; CSV and JSON keep them empty
 node_table_tsv() {
-    printf 'Hostname\tNode ID\tRole\tAvail\tState\tAddress\tOS/Arch\tEngine\tvCPUs\tRAM (GiB)\tOrchestrators\tCollection\tStatus\n'
-    echo "$1" | jq -r "$NODE_JQ"' | .[] | [.hostname, .id[0:10], .role, .availability, .state, .addr,
-        (.os + "/" + .arch), .engine, (.cpus | tostring), .mem_gib, (.orchestrators | join("+")),
-        .collection, .status_message] | map(if . == "" or . == "/" then "-" else . end) | @tsv'
+    printf 'Hostname\tNode ID\tRole\tAvail\tState\tAddress\tOS/Arch\tOperating System\tEngine\tvCPUs\tRAM (GiB)\n'
+    echo "$1" | jq -r --argjson osmap "$OS_MAP" "$NODE_JQ"' | .[] | [.hostname, .id[0:10], .role, .availability,
+        .state, .addr, (.os + "/" + .arch), .operating_system, .engine, (.cpus | tostring), .mem_gib]
+        | map(if . == "" or . == "/" then "-" else . end) | @tsv'
 }
 
 node_csv() {
-    echo "$1" | jq -r --arg cid "$2" '["ClusterID","Hostname","NodeID","Role","Availability","State","Address","OS","Arch",
-        "EngineVersion","vCPUs","RAM_GiB","Orchestrators","Collection","Created","Updated","StatusMessage"],
-        ('"$NODE_JQ"' | .[] | [$cid, .hostname, .id, .role, .availability, .state, .addr, .os, .arch, .engine,
-        .cpus, (.mem_gib | tonumber), (.orchestrators | join("+")), .collection, .created, .updated, .status_message]) | @csv'
+    echo "$1" | jq -r --argjson osmap "$OS_MAP" --arg cid "$2" '["ClusterID","Hostname","NodeID","Role","Availability",
+        "State","Address","OS","Arch","OperatingSystem","EngineVersion","vCPUs","RAM_GiB","Created","Updated"],
+        ('"$NODE_JQ"' | .[] | [$cid, .hostname, .id, .role, .availability, .state, .addr, .os, .arch,
+        .operating_system, .engine, .cpus, (.mem_gib | tonumber), .created, .updated]) | @csv'
 }
 
 node_json() {
-    echo "$1" | jq -c "$NODE_JQ"' | map(.mem_gib |= tonumber)'
+    echo "$1" | jq -c --argjson osmap "$OS_MAP" "$NODE_JQ"' | map(.mem_gib |= tonumber)'
+}
+
+# Logs how many nodes have an operating system, and why any are missing
+report_os_coverage() {
+    local total found
+    total=$(echo "$1" | jq 'length')
+    found=$(echo "$1" | jq --argjson osmap "$OS_MAP" '[.[] | select($osmap[.Description.Hostname // ""] != null)] | length')
+    if [ "$found" -lt "$total" ]; then
+        warn "Operating system found for ${found} of ${total} nodes. $2"
+    fi
 }
 
 # Prints tab-separated rows (first row is the header) as a bordered table.
@@ -161,6 +184,10 @@ info "Cluster ID: ${CLUSTER_ID}"
 
 info "Connected node: $(echo "$INFO_JSON" | jq -r '"\(.Name // "unknown"), \(.OperatingSystem // "unknown OS"), kernel \(.KernelVersion // "unknown"), engine \(.ServerVersion // "unknown")"' 2>/dev/null)"
 
+# Operating system per node: MKE lists every node in SystemStatus; a plain engine only describes itself
+OS_MAP=$(echo "$INFO_JSON" | jq -c "($SYSTEMSTATUS_OS_JQ) + (if (.Name // \"\") != \"\" and (.OperatingSystem // \"\") != \"\" then {(.Name): .OperatingSystem} else {} end)" 2>/dev/null)
+[ -z "$OS_MAP" ] && OS_MAP='{}'
+
 # Through MKE, /version reports the MKE version as "ucp/<version>"
 MKE_VERSION=$($CURL_CMD "${BASE_URL}/version" | jq -r '.Version // empty | select(startswith("ucp/")) | ltrimstr("ucp/")' 2>/dev/null)
 # MSR (formerly DTR) runs as Swarm services; take the version from the image tag
@@ -174,6 +201,11 @@ manager_total=$(echo "$NODES_JSON" | jq '[.[] | select(.Spec.Role == "manager")]
 no_resources=$(echo "$NODES_JSON" | jq '[.[] | select((.Description.Resources.NanoCPUs // 0) == 0)] | length')
 info "Retrieved ${node_total} nodes (managers: ${manager_total}, workers: $((node_total - manager_total)))"
 [ "$no_resources" -gt 0 ] && warn "${no_resources} node(s) reported no CPU data and are excluded from the totals"
+if [ -n "${UCP_URL}" ]; then
+    report_os_coverage "$NODES_JSON" "MKE's docker info did not list the other nodes."
+else
+    report_os_coverage "$NODES_JSON" "docker info on this engine only describes this node; set UCP_URL with an MKE client bundle to get every node's operating system."
+fi
 
 # Flag nodes that are not ready or not active, as "docker node ls" would show them
 echo "$NODES_JSON" | jq -r '.[] | select((.Status.State // "ready") != "ready" or (.Spec.Availability // "active") != "active")
@@ -221,7 +253,7 @@ elif [ "$FORMAT" == "nodes-csv" ]; then
 else
     # Per-node details
     echo ""
-    node_table_tsv "$NODES_JSON" | print_table 9,10
+    node_table_tsv "$NODES_JSON" | print_table 10,11
 
     # Summary by node group
     border="+------------+-------+-------------+-----------------+"
