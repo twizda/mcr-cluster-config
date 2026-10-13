@@ -30,7 +30,9 @@ docker run -t --rm \
   twizda/mcr-cluster-config
 ```
 
-**From any machine, using a UCP/MKE client bundle:**
+This reports the operating system only for the node the container runs on. On SELinux-enforcing hosts such as RHEL, also add `--security-opt label=disable`, otherwise the container can't access the socket.
+
+**From any machine, using a UCP/MKE client bundle** (every node's operating system):
 
 ```bash
 docker run -t --rm \
@@ -41,12 +43,13 @@ docker run -t --rm \
 
 The bundle's `key.pem` and `cert.pem` are used to authenticate, and `ca.pem` is used to verify the UCP certificate.
 
+Run this with your local Docker, in a shell where the client bundle is **not** loaded (no `source env.sh`). With the bundle loaded, `docker run` starts the container on the cluster, so the `-v` path refers to a cluster node and `/data` is empty.
+
 ## Example output
 
 ```text
-INFO[0000] Connected to UCP at https://mke.example.com
+INFO[0000] Connected to MKE at https://mke.example.com
 INFO[0000] Cluster ID: 4ysfudgvpfagt1yy0gwf9viqi
-INFO[0000] Connected node: mke-mgr-01, Red Hat Enterprise Linux 8.10 (Ootpa), kernel 4.18.0-553.el8_10.x86_64, engine ucp/3.8.8
 INFO[0000] MKE version: 3.8.8
 INFO[0000] Retrieved 2 nodes (managers: 1, workers: 1)
 WARN[0000] Node mke-wkr-01: state down, availability active (heartbeat failure)

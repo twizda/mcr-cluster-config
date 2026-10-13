@@ -154,7 +154,7 @@ print_table() {
 # --- Configuration ---
 if [ -n "${UCP_URL}" ]; then
     for f in /data/key.pem /data/cert.pem; do
-        [ -f "$f" ] || fatal "Missing $f. You must mount an extracted client bundle with \"-v /path/to/bundle:/data:ro\""
+        [ -f "$f" ] || fatal "Missing $f. You must mount an extracted client bundle with \"-v /path/to/bundle:/data:ro\". If the client bundle is loaded in your shell (DOCKER_HOST is set), the container runs on the cluster and the -v path refers to a cluster node: run it from a shell without the bundle loaded."
     done
     CURL_CMD="curl -s -m 15 --key /data/key.pem --cert /data/cert.pem"
     if [ -f /data/ca.pem ]; then
@@ -163,19 +163,19 @@ if [ -n "${UCP_URL}" ]; then
         warn "No ca.pem found in /data; verifying the UCP certificate against the system CA store."
     fi
     BASE_URL="https://${UCP_URL}"
-    API_DESC="UCP at ${BASE_URL}"
+    API_DESC="MKE at ${BASE_URL}"
 else
-    [ -S /var/run/docker.sock ] || fatal "Missing docker.sock. You must run the container with \"-v /var/run/docker.sock:/var/run/docker.sock\" or set UCP_URL with a client bundle mounted at /data"
+    [ -S /var/run/docker.sock ] || fatal "Missing docker.sock. You must run the container with \"-v /var/run/docker.sock:/var/run/docker.sock\" (on SELinux hosts such as RHEL, also add \"--security-opt label=disable\"), or set UCP_URL with a client bundle mounted at /data"
     CURL_CMD="curl -s -m 5 --unix-socket /var/run/docker.sock"
     BASE_URL="http://v1.30"
-    API_DESC="Docker API via /var/run/docker.sock"
+    API_DESC="the Docker API via /var/run/docker.sock"
 fi
 
 # Basic check to see if we can talk to the API
 if ! $CURL_CMD "${BASE_URL}/_ping" > /dev/null; then
-    fatal "Unable to connect to the ${API_DESC}."
+    fatal "Unable to connect to ${API_DESC}."
 fi
-info "Connected to the ${API_DESC}"
+info "Connected to ${API_DESC}"
 
 # Fetch all node data in a single request (equivalent to "docker node ls")
 NODES_JSON=$($CURL_CMD "${BASE_URL}/nodes")
@@ -190,7 +190,10 @@ CLUSTER_ID=$(echo "$INFO_JSON" | jq -r '.Swarm.Cluster.ID // "unknown"' 2>/dev/n
 [ -z "$CLUSTER_ID" ] && CLUSTER_ID="unknown"
 info "Cluster ID: ${CLUSTER_ID}"
 
-info "Connected node: $(echo "$INFO_JSON" | jq -r '"\(.Name // "unknown"), \(.OperatingSystem // "unknown OS"), kernel \(.KernelVersion // "unknown"), engine \(.ServerVersion // "unknown")"' 2>/dev/null)"
+# Through MKE, /info describes MKE's controller rather than a node, so only describe a real engine
+if ! echo "$INFO_JSON" | jq -e '(.ServerVersion // "") | startswith("ucp/")' > /dev/null 2>&1; then
+    info "Connected node: $(echo "$INFO_JSON" | jq -r '"\(.Name // "unknown"), \(.OperatingSystem // "unknown OS"), kernel \(.KernelVersion // "unknown"), engine \(.ServerVersion // "unknown")"' 2>/dev/null)"
+fi
 
 # Operating system per node: MKE lists every node in SystemStatus; a plain engine only describes itself
 OS_MAP=$(echo "$INFO_JSON" | jq -c "($SYSTEMSTATUS_OS_JQ) + (if (.Name // \"\") != \"\" and (.OperatingSystem // \"\") != \"\" then {(.Name): .OperatingSystem} else {} end)" 2>/dev/null)

@@ -34,6 +34,8 @@ docker pull twizda/mcr-cluster-config
 
 The bundle's `key.pem` and `cert.pem` are used to authenticate, and `ca.pem` is used to verify MKE's certificate.
 
+Run this with your local Docker, in a shell where the client bundle is **not** loaded (no `source env.sh`). With the bundle loaded, `docker run` starts the container on the cluster, so the `-v` path refers to a cluster node and `/data` is empty.
+
 ### On a manager node
 
 Run the container on a Swarm manager with the Docker socket mounted:
@@ -44,7 +46,7 @@ docker run -t --rm --name mcr-cluster-config \
   twizda/mcr-cluster-config
 ```
 
-With an MKE client bundle loaded in your shell, add `-e affinity:container==ucp-controller` so MKE schedules the container on a manager. Either way, the container talks to that node's local engine, so the **Operating System** column is filled in only for that node, and a `WARN` says so. Use the client-bundle method above to get every node's operating system.
+On SELinux-enforcing hosts such as RHEL, also add `--security-opt label=disable`, otherwise the container can't access the socket. With an MKE client bundle loaded in your shell, add `-e affinity:container==ucp-controller` so MKE schedules the container on a manager. Either way, the container talks to that node's local engine, so the **Operating System** column is filled in only for that node, and a `WARN` says so. Use the client-bundle method above to get every node's operating system.
 
 ### From a support dump
 
@@ -122,9 +124,8 @@ Uptime, hypervisor and GPU aren't available from `docker info` or `docker node l
 By default, the audit prints a per-node table followed by a summary table. Progress and error messages are written to stderr in the standard Mirantis log format (`INFO`, `WARN`, `FATA`), so redirecting `--csv`, `--nodes-csv` or `--json` output to a file captures only the data. With `-t`, levels are colored (cyan, yellow and red); set `NO_COLOR=1` to turn colors off.
 
 ```text
-INFO[0000] Connected to UCP at https://mke.example.com
+INFO[0000] Connected to MKE at https://mke.example.com
 INFO[0000] Cluster ID: 4ysfudgvpfagt1yy0gwf9viqi
-INFO[0000] Connected node: mke-mgr-01, Red Hat Enterprise Linux 8.10 (Ootpa), kernel 4.18.0-553.el8_10.x86_64, engine ucp/3.8.8
 INFO[0000] MKE version: 3.8.8
 INFO[0000] Retrieved 2 nodes (managers: 1, workers: 1)
 WARN[0000] Node mke-wkr-01: state down, availability active (heartbeat failure)
