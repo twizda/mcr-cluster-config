@@ -212,6 +212,14 @@ The workflow then does the rest:
 6. Updates the Docker Hub description from `DOCKERHUB.md`.
 7. Creates the GitHub release: the tag message summary, the image and scan result, and the pull requests merged since the previous release.
 
+**Afterwards, copy the image to the Mirantis registry.** The workflow has no credentials for `registry.ci.mirantis.com`, so this step is manual. Once the release workflow finishes, run the following while logged in with `docker login registry.ci.mirantis.com`:
+
+```bash
+scripts/push-mirantis-registry.sh 0.5.2
+```
+
+The script copies the published image to `registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config` without rebuilding it, so both platforms and the attestations are kept. It tags `<version>` and `latest`, then checks that both match Docker Hub.
+
 To check the pipeline without publishing anything, run the **Release** workflow manually from the Actions tab. It builds both platforms and runs the tests, but skips every publishing step.
 
 The workflow needs the repository variable `DOCKERHUB_USERNAME` and the secret `DOCKERHUB_TOKEN`, a Docker Hub personal access token with Read, Write, Delete scope.
