@@ -1,0 +1,2 @@
+ClusterID,NodeCount,TotalCores,AvgCores,TotalGiB,AvgGiB
+ABCD:1234:LEGACY,4,36,9.00,144.00,36.00

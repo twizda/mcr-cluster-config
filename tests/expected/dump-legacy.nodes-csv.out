@@ -1,0 +1,5 @@
+"ClusterID","Hostname","NodeID","Role","Availability","State","Address","OS","Arch","OperatingSystem","EngineVersion","vCPUs","RAM_GiB","Created","Updated"
+"ABCD:1234:LEGACY","host1","node1","manager","","","","linux","","","",4,16.00,"",""
+"ABCD:1234:LEGACY","host2","node2","worker","","","","linux","","","",8,32.00,"",""
+"ABCD:1234:LEGACY","host3","node3","worker","","","","linux","","","",8,32.00,"",""
+"ABCD:1234:LEGACY","host4","node4","worker","","","","windows","","","",16,64.00,"",""

@@ -6,6 +6,7 @@
 # --- Default Format ---
 FORMAT="text"
 
+# >>> shared:logging (keep identical in both scripts; checked by tests/check-shared-code.sh)
 # --- Logging ---
 # Mirrors the logrus text format used by Mirantis tooling, e.g. "INFO[0000] message".
 # Levels are colored only when stderr is a terminal and NO_COLOR is unset.
@@ -19,6 +20,11 @@ log()   { printf '%s%s%s[%04d] %s\n' "$1" "$2" "$C_RESET" "$SECONDS" "$3" >&2; }
 info()  { log "$C_INFO" "INFO" "$*"; }
 warn()  { log "$C_WARN" "WARN" "$*"; }
 fatal() { log "$C_FATA" "FATA" "$*"; exit 1; }
+
+# Prints a count with a singular or plural noun, e.g. "1 node", "2 nodes"
+plural() { if [ "$1" -eq 1 ]; then echo "$1 $2"; else echo "$1 ${2}s"; fi; }
+
+# <<< shared:logging
 
 # --- Usage Function ---
 usage() {
@@ -48,6 +54,7 @@ for cmd in bc awk; do
     command -v "$cmd" > /dev/null 2>&1 || fatal "Required command '$cmd' is not installed."
 done
 
+# >>> shared:node-details (keep identical in both scripts; checked by tests/check-shared-code.sh)
 # --- Per-node details ---
 # Shared with the other audit script (keep in sync): turns a node list into one object per node.
 # OS_MAP maps hostnames to the "Operating System" reported by docker info for that node.
@@ -91,8 +98,8 @@ def lbl($k): (.Spec.Labels // {})[$k];
 node_table_tsv() {
     printf 'Hostname\tNode ID\tRole\tAvail\tState\tAddress\tOS/Arch\tOperating System\tEngine\tvCPUs\tRAM (GiB)\n'
     echo "$1" | jq -r --argjson osmap "$OS_MAP" "$NODE_JQ"' | .[] | [.hostname, .id[0:10], .role, .availability,
-        .state, .addr, (.os + "/" + .arch), .operating_system, .engine, (.cpus | tostring), .mem_gib]
-        | map(if . == "" or . == "/" then "-" else . end) | @tsv'
+        .state, .addr, ([.os, .arch] | map(select(. != "")) | join("/")), .operating_system, .engine,
+        (.cpus | tostring), .mem_gib] | map(if . == "" then "-" else . end) | @tsv'
 }
 
 node_csv() {
@@ -112,7 +119,7 @@ report_os_coverage() {
     total=$(echo "$1" | jq 'length')
     found=$(echo "$1" | jq --argjson osmap "$OS_MAP" '[.[] | select($osmap[.Description.Hostname // ""] != null)] | length')
     if [ "$found" -lt "$total" ]; then
-        warn "Operating system found for ${found} of ${total} nodes. $2"
+        warn "Operating system found for ${found} of $(plural "$total" node). $2"
     fi
 }
 
@@ -143,6 +150,7 @@ print_table() {
             print sep
         }'
 }
+# <<< shared:node-details
 
 # Builds OS_MAP from any docker info output in the dump, matched to nodes by name:
 # text output (" Name:" and " Operating System:" lines) and JSON output (including MKE's SystemStatus)
@@ -231,8 +239,8 @@ while read -r nano mem; do
 done <<< "$node_list"
 
 [ "$count" -eq 0 ] && fatal "No valid node data found in ucp-nodes.txt"
-info "Found ${count} nodes"
-[ "$skipped" -gt 0 ] && warn "${skipped} node(s) reported no CPU data and are excluded from the totals"
+info "Found $(plural "$count" node)"
+[ "$skipped" -gt 0 ] && warn "$(plural "$skipped" node) reported no CPU data (excluded from the totals)"
 
 # Final Calculations (printf adds the leading zero bc omits for values below 1)
 CPUs=$(echo "$CPUs" | sed '/^$/d' | sort -n)

@@ -1,0 +1,14 @@
+Client:
+ Version:    25.0.14m1
+ Context:    default
+
+Server:
+ Containers: 42
+ Server Version: 25.0.14m1
+ Kernel Version: 4.18.0-553.el8_10.x86_64
+ Operating System: Red Hat Enterprise Linux 8.10 (Ootpa)
+ OSType: linux
+ Architecture: x86_64
+ CPUs: 8
+ Total Memory: 31.14GiB
+ Name: mke-mgr-01

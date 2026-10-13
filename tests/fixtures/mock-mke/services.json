@@ -1,0 +1,12 @@
+[
+    {
+        "Spec": {
+            "Name": "dtr-api",
+            "TaskTemplate": {
+                "ContainerSpec": {
+                    "Image": "mirantis/dtr-api:2.9.19@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+                }
+            }
+        }
+    }
+]

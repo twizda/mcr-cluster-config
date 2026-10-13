@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: ShellCheck and shared code
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck -s bash -S warning swarm-core-audit.sh support-dump-count-cores.sh tests/*.sh
+      - name: Shared code is identical in both scripts
+        run: tests/check-shared-code.sh
+
+  dump-tests:
+    name: Support dump tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS runs the tests with its built-in bash 3.2
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run support dump tests
+        run: /bin/bash tests/run-dump-tests.sh
+
+  swarm-tests:
+    name: Swarm and mock MKE tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run swarm tests
+        run: tests/run-swarm-tests.sh
