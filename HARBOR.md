@@ -10,7 +10,8 @@ Source code, issues and release notes: **https://github.com/twizda/mcr-cluster-c
 
 | Tag | Notes |
 |---|---|
-| `0.5.3`, `latest` | Clearer MKE connection messages; hints for client-bundle and SELinux setup errors |
+| `0.5.4`, `latest` | Support-dump script included in the image (--entrypoint support-dump-count-cores.sh) |
+| `0.5.3` | Clearer MKE connection messages; hints for client-bundle and SELinux setup errors |
 | `0.5.2` | Singular wording ("1 node") and OS/Arch display fixes |
 
 Tags are built for `linux/amd64` and `linux/arm64`, with build provenance and an SBOM attached. Older releases are available on [Docker Hub](https://hub.docker.com/r/twizda/mcr-cluster-config/tags).
@@ -21,7 +22,7 @@ This is a private project. Log in first:
 
 ```bash
 docker login registry.ci.mirantis.com
-docker pull registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config:0.5.3
+docker pull registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config:0.5.4
 ```
 
 ## Quick start
@@ -108,7 +109,15 @@ docker run --rm -e UCP_URL="mke.example.com" -v /path/to/bundle:/data:ro \
 
 ## No API access?
 
-If you only have an MKE support dump, use [`support-dump-count-cores.sh`](https://github.com/twizda/mcr-cluster-config/blob/v0.5.3/support-dump-count-cores.sh) from the GitHub repository. Run it in the extracted dump directory. It produces the same per-node table and totals, without Docker. Per-node details need `jq`.
+If you only have an MKE support dump, the image can audit it too. Extract the dump, then run this in its top-level directory:
+
+```bash
+docker run --rm -v "$PWD":/dump:ro -w /dump --entrypoint support-dump-count-cores.sh registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config
+```
+
+It prints the same per-node table and totals as the live audit, with each node's operating system taken from the `docker info` output in the dump. Add `--csv`, `--nodes-csv` or `--json` for other formats. On SELinux-enforcing hosts such as RHEL, also add `--security-opt label=disable`.
+
+The same script, [`support-dump-count-cores.sh`](https://github.com/twizda/mcr-cluster-config/blob/v0.5.4/support-dump-count-cores.sh), can also be run directly from the GitHub repository; it needs `bash`, `awk`, `bc` and `jq`.
 
 ## Security
 

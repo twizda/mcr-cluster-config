@@ -10,6 +10,8 @@ The project has two scripts:
 docker pull twizda/mcr-cluster-config
 ```
 
+`docker run` doesn't re-download an image that's already on your machine, so run `docker pull` again to update a cached `latest` after each release.
+
 > **Note:** This project was previously published as `mirantis/audit-cluster`. That image is no longer updated; use `twizda/mcr-cluster-config` instead.
 
 ## Ways to run the audit
@@ -50,15 +52,25 @@ On SELinux-enforcing hosts such as RHEL, also add `--security-opt label=disable`
 
 ### From a support dump
 
-Run the script from the directory where the support dump was extracted:
+Extract the support dump, then run the support-dump script from the image, in the dump's top-level directory. You don't need a local copy of the script or any tools other than Docker:
 
 ```bash
-./support-dump-count-cores.sh
+cd docker-support-<cluster>-<date>
+docker run --rm -v "$PWD":/dump:ro -w /dump --entrypoint support-dump-count-cores.sh twizda/mcr-cluster-config
 ```
 
-It prints the same per-node table as the container, read from the dump's `ucp-nodes.txt`, with each node's operating system taken from any `docker info` output in the dump. It follows that with a core-distribution table and a summary table.
+Add `--csv`, `--nodes-csv` or `--json` at the end for other formats. On SELinux-enforcing hosts such as RHEL, also add `--security-opt label=disable`.
 
-It needs `bash`, `awk` and `bc`, and works with the bash 3.2 that ships with macOS. Per-node details also need `jq`; without it, the script prints a warning and shows only the summary.
+Or run the script directly from a checkout of this repository:
+
+```bash
+cd docker-support-<cluster>-<date>
+/path/to/mcr-cluster-config/support-dump-count-cores.sh
+```
+
+Run directly, it needs `bash`, `awk` and `bc`, and works with the bash 3.2 that ships with macOS. Per-node details also need `jq`; without it, the script prints a warning and shows only the summary. The image includes all of these.
+
+Either way, it prints the same per-node table as the live audit, read from the dump's `ucp-nodes.txt`, with each node's operating system taken from any `docker info` output in the dump. That's followed by a core-distribution table and a summary table.
 
 ## Options
 

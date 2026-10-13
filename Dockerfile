@@ -4,18 +4,19 @@ FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cab
 
 # Use LABEL to provide maintainer information and other metadata
 LABEL maintainer="Tom Wizda <twizda@mirantis.com>" \
-      version="0.5.3" \
-      description="Docker Swarm CPU and Memory checking tool"
+      version="0.5.4" \
+      description="Docker Swarm / MKE cluster audit: node details, CPU and memory, from the API or a support dump"
 
 # Apply Alpine security updates released after the base image was built,
 # then add the tools the script needs ('bc' is required for memory and CPU math)
 RUN apk upgrade --no-cache \
     && apk add --no-cache bash curl jq bc
 
-COPY swarm-core-audit.sh /usr/local/bin/swarm-core-audit.sh
+COPY swarm-core-audit.sh support-dump-count-cores.sh /usr/local/bin/
 
-# Ensure the script is executable
-RUN chmod +x /usr/local/bin/swarm-core-audit.sh
+# Ensure the scripts are executable. The support dump script runs with:
+#   docker run --rm -v "$PWD":/dump:ro -w /dump --entrypoint support-dump-count-cores.sh <image>
+RUN chmod +x /usr/local/bin/swarm-core-audit.sh /usr/local/bin/support-dump-count-cores.sh
 
 # Use the absolute path to bash to ensure multi-platform compatibility
 ENTRYPOINT ["/bin/bash", "/usr/local/bin/swarm-core-audit.sh"]
