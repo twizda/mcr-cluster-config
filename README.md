@@ -180,8 +180,33 @@ tests/run-dump-tests.sh --update
 Both scripts contain the same logging and per-node code, between `# >>> shared:<name>` and `# <<< shared:<name>` markers. The copies let the support-dump script be downloaded on its own. Change both copies together; `tests/check-shared-code.sh` fails if they differ.
 
 ### Releases
-1. Bump the `version` label in the `Dockerfile` and update the tags table and scan result in [DOCKERHUB.md](DOCKERHUB.md).
-2. After merging, build and push the image for `linux/amd64` and `linux/arm64` with provenance and an SBOM, tagged with the version and `latest`.
-3. Tag the release (`vX.Y.Z`), create the GitHub release, and paste `DOCKERHUB.md` into the repository overview on Docker Hub.
+Releases are published by `.github/workflows/release.yml` when a `v0.x` tag is pushed.
+
+1. **Prepare.** Bump the version and update [DOCKERHUB.md](DOCKERHUB.md), then open a pull request with the result:
+
+    ```bash
+    scripts/prepare-release.sh 0.5.2 "Short description for the Docker Hub tags table"
+    ```
+
+2. **Publish.** After the pull request merges, tag `main`. The tag message becomes the release title:
+
+    ```bash
+    git checkout main && git pull
+    git tag -a v0.5.2 -m "Release v0.5.2: Short title"
+    git push origin v0.5.2
+    ```
+
+The workflow then does the rest:
+1. Checks that the tag is on `main` and matches the `Dockerfile` version.
+2. Runs the full CI suite.
+3. Builds and pushes the `linux/amd64` and `linux/arm64` image, with provenance and an SBOM.
+4. Runs Docker Scout and stops if there are any fixable critical or high vulnerabilities. In that case `latest` and the release are left untouched.
+5. Moves `latest`.
+6. Updates the Docker Hub description from `DOCKERHUB.md`.
+7. Creates the GitHub release, with notes generated from the merged pull requests. Edit the notes afterwards if needed.
+
+To check the pipeline without publishing anything, run the **Release** workflow manually from the Actions tab. It builds both platforms and runs the tests, but skips every publishing step.
+
+The workflow needs the repository variable `DOCKERHUB_USERNAME` and the secret `DOCKERHUB_TOKEN`, a Docker Hub personal access token with Read, Write, Delete scope.
 
 The `3.0` branch holds a separate tool, the Python MKE inventory tool, released as `v3.x`. Releases on `main` (`v0.x`) are this Swarm/MKE audit.
