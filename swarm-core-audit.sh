@@ -22,28 +22,103 @@ fatal() { log "$C_FATA" "FATA" "$*"; exit 1; }
 
 # --- Usage Function ---
 usage() {
-    echo "Usage: $0 [--json | --csv]"
+    echo "Usage: $0 [--json | --csv | --nodes-csv]"
     echo "Audits Docker Swarm node sizing via the Docker/UCP API."
     echo ""
     echo "Options:"
-    echo "  --json    Output summary in JSON format"
-    echo "  --csv     Output summary in CSV format"
-    echo "  --help    Display this help message"
+    echo "  --json       Output cluster summary and per-node details in JSON format"
+    echo "  --csv        Output the summary by node group in CSV format"
+    echo "  --nodes-csv  Output per-node details in CSV format"
+    echo "  --help       Display this help message"
 }
 
 # --- Parse Flags ---
 case "$1" in
-    --json)     FORMAT="json" ;;
-    --csv)      FORMAT="csv"  ;;
-    -h|--help)  usage; exit 0 ;;
-    "")         FORMAT="text" ;;
-    *)          fatal "Unknown option: $1. Run with --help to see the supported options." ;;
+    --json)       FORMAT="json" ;;
+    --csv)        FORMAT="csv"  ;;
+    --nodes-csv)  FORMAT="nodes-csv" ;;
+    -h|--help)    usage; exit 0 ;;
+    "")           FORMAT="text" ;;
+    *)            fatal "Unknown option: $1. Run with --help to see the supported options." ;;
 esac
 
 # --- Dependency Check ---
-for cmd in curl jq bc; do
+for cmd in curl jq bc awk; do
     command -v "$cmd" > /dev/null 2>&1 || fatal "Required command '$cmd' is not installed."
 done
+
+# --- Per-node details ---
+# Shared with support-dump-count-cores.sh: turns a /nodes response into one object per node.
+# MKE adds the orchestrator, collection and health details (Status.Message) to the node list.
+NODE_JQ='
+def two: ((. // 0) * 100 | floor) as $c | "\($c / 100 | floor).\($c % 100 | tostring | if length == 1 then "0" + . else . end)";
+def lbl($k): (.Spec.Labels // {})[$k];
+[ .[] | {
+    hostname:       (.Description.Hostname // ""),
+    id:             .ID,
+    role:           (if .ManagerStatus.Leader == true then "leader" else (.Spec.Role // "") end),
+    availability:   (.Spec.Availability // ""),
+    state:          (.Status.State // ""),
+    addr:           (.Status.Addr // ""),
+    os:             (.Description.Platform.OS // ""),
+    arch:           (.Description.Platform.Architecture // ""),
+    engine:         (.Description.Engine.EngineVersion // ""),
+    cpus:           ((.Description.Resources.NanoCPUs // 0) / 1000000000 | floor),
+    mem_gib:        ((.Description.Resources.MemoryBytes // 0) / 1073741824 | two),
+    orchestrators:  [ (if lbl("com.docker.ucp.orchestrator.swarm") == "true" then "swarm" else empty end),
+                      (if lbl("com.docker.ucp.orchestrator.kubernetes") == "true" then "kube" else empty end) ],
+    collection:     (lbl("com.docker.ucp.access.label") // ""),
+    created:        ((.CreatedAt // "")[0:19]),
+    updated:        ((.UpdatedAt // "")[0:19]),
+    status_message: (.Status.Message // "")
+} ] | sort_by((if .role == "leader" then 0 elif .role == "manager" then 1 else 2 end), .hostname)'
+
+# Empty values are shown as "-" in the table only; CSV and JSON keep them empty
+node_table_tsv() {
+    printf 'Hostname\tNode ID\tRole\tAvail\tState\tAddress\tOS/Arch\tEngine\tvCPUs\tRAM (GiB)\tOrchestrators\tCollection\tStatus\n'
+    echo "$1" | jq -r "$NODE_JQ"' | .[] | [.hostname, .id[0:10], .role, .availability, .state, .addr,
+        (.os + "/" + .arch), .engine, (.cpus | tostring), .mem_gib, (.orchestrators | join("+")),
+        .collection, .status_message] | map(if . == "" or . == "/" then "-" else . end) | @tsv'
+}
+
+node_csv() {
+    echo "$1" | jq -r --arg cid "$2" '["ClusterID","Hostname","NodeID","Role","Availability","State","Address","OS","Arch",
+        "EngineVersion","vCPUs","RAM_GiB","Orchestrators","Collection","Created","Updated","StatusMessage"],
+        ('"$NODE_JQ"' | .[] | [$cid, .hostname, .id, .role, .availability, .state, .addr, .os, .arch, .engine,
+        .cpus, (.mem_gib | tonumber), (.orchestrators | join("+")), .collection, .created, .updated, .status_message]) | @csv'
+}
+
+node_json() {
+    echo "$1" | jq -c "$NODE_JQ"' | map(.mem_gib |= tonumber)'
+}
+
+# Prints tab-separated rows (first row is the header) as a bordered table.
+# $1 is a comma-separated list of right-aligned column numbers. Long cells are truncated.
+print_table() {
+    awk -F'\t' -v right="$1" -v maxw=60 '
+        BEGIN { n = split(right, r, ","); for (i = 1; i <= n; i++) ra[r[i]] = 1 }
+        {
+            for (i = 1; i <= NF; i++) {
+                v = $i
+                if (length(v) > maxw) v = substr(v, 1, maxw - 3) "..."
+                cell[NR, i] = v
+                if (length(v) > w[i]) w[i] = length(v)
+            }
+            if (NF > nf) nf = NF
+        }
+        END {
+            sep = "+"
+            for (i = 1; i <= nf; i++) { s = ""; for (j = 0; j < w[i] + 2; j++) s = s "-"; sep = sep s "+" }
+            print sep
+            for (row = 1; row <= NR; row++) {
+                line = "|"
+                for (i = 1; i <= nf; i++) line = line " " sprintf((ra[i] ? "%" : "%-") w[i] "s", cell[row, i]) " |"
+                print line
+                if (row == 1) print sep
+            }
+            print sep
+        }'
+}
 
 # --- Configuration ---
 if [ -n "${UCP_URL}" ]; then
@@ -71,21 +146,39 @@ if ! $CURL_CMD "${BASE_URL}/_ping" > /dev/null; then
 fi
 info "Connected to the ${API_DESC}"
 
-# Fetch all node data in a single request
+# Fetch all node data in a single request (equivalent to "docker node ls")
 NODES_JSON=$($CURL_CMD "${BASE_URL}/nodes")
 if ! echo "$NODES_JSON" | jq -e 'type == "array"' > /dev/null 2>&1; then
     reason=$(echo "$NODES_JSON" | jq -r '.message // empty' 2>/dev/null)
     fatal "Unable to list nodes: ${reason:-this engine must be a Swarm manager}"
 fi
 
-CLUSTER_ID=$($CURL_CMD "${BASE_URL}/info" | jq -r '.Swarm.Cluster.ID // "unknown"' 2>/dev/null)
+# Cluster details (equivalent to "docker info" and "docker version")
+INFO_JSON=$($CURL_CMD "${BASE_URL}/info")
+CLUSTER_ID=$(echo "$INFO_JSON" | jq -r '.Swarm.Cluster.ID // "unknown"' 2>/dev/null)
 [ -z "$CLUSTER_ID" ] && CLUSTER_ID="unknown"
 info "Cluster ID: ${CLUSTER_ID}"
 
+info "Connected node: $(echo "$INFO_JSON" | jq -r '"\(.Name // "unknown"), \(.OperatingSystem // "unknown OS"), kernel \(.KernelVersion // "unknown"), engine \(.ServerVersion // "unknown")"' 2>/dev/null)"
+
+# Through MKE, /version reports the MKE version as "ucp/<version>"
+MKE_VERSION=$($CURL_CMD "${BASE_URL}/version" | jq -r '.Version // empty | select(startswith("ucp/")) | ltrimstr("ucp/")' 2>/dev/null)
+# MSR (formerly DTR) runs as Swarm services; take the version from the image tag
+MSR_VERSION=$($CURL_CMD "${BASE_URL}/services" | jq -r 'if type == "array" then [.[].Spec.TaskTemplate.ContainerSpec.Image // ""
+    | select(test("(mirantis|docker)/dtr")) | split("@")[0] | split(":")[1] // empty] | first // empty else empty end' 2>/dev/null)
+[ -n "$MKE_VERSION" ] && info "MKE version: ${MKE_VERSION}"
+[ -n "$MSR_VERSION" ] && info "MSR version: ${MSR_VERSION}"
+
 node_total=$(echo "$NODES_JSON" | jq 'length')
+manager_total=$(echo "$NODES_JSON" | jq '[.[] | select(.Spec.Role == "manager")] | length')
 no_resources=$(echo "$NODES_JSON" | jq '[.[] | select((.Description.Resources.NanoCPUs // 0) == 0)] | length')
-info "Retrieved ${node_total} nodes"
+info "Retrieved ${node_total} nodes (managers: ${manager_total}, workers: $((node_total - manager_total)))"
 [ "$no_resources" -gt 0 ] && warn "${no_resources} node(s) reported no CPU data and are excluded from the totals"
+
+# Flag nodes that are not ready or not active, as "docker node ls" would show them
+echo "$NODES_JSON" | jq -r '.[] | select((.Status.State // "ready") != "ready" or (.Spec.Availability // "active") != "active")
+    | "\(.Description.Hostname // .ID): state \(.Status.State), availability \(.Spec.Availability)\(if (.Status.Message // "") != "" then " (" + .Status.Message + ")" else "" end)"' \
+    | while read -r line; do warn "Node ${line}"; done
 
 # --- Processing Function ---
 # Sets NODE_COUNT, TOTAL_CORES and TOTAL_MEM_GB for the given role/OS filter
@@ -115,14 +208,22 @@ if [ "$FORMAT" == "json" ]; then
         process_node_data "${group%%:*}" "${group#*:}"
         entries="${entries:+$entries, }{\"role\": \"${group%%:*}\", \"os\": \"${group#*:}\", \"nodes\": $NODE_COUNT, \"cores\": $TOTAL_CORES, \"mem_gib\": $TOTAL_MEM_GB}"
     done
-    printf '{"cluster_id": "%s", "groups": [%s]}\n' "$CLUSTER_ID" "$entries"
+    printf '{"cluster_id": "%s", "mke_version": "%s", "msr_version": "%s", "groups": [%s], "nodes": %s}\n' \
+        "$CLUSTER_ID" "$MKE_VERSION" "$MSR_VERSION" "$entries" "$(node_json "$NODES_JSON")"
 elif [ "$FORMAT" == "csv" ]; then
     echo "ClusterID,Role,OS,NodeCount,TotalCores,TotalGiB"
     for group in $GROUPS_LIST; do
         process_node_data "${group%%:*}" "${group#*:}"
         echo "$CLUSTER_ID,${group%%:*},${group#*:},$NODE_COUNT,$TOTAL_CORES,$TOTAL_MEM_GB"
     done
+elif [ "$FORMAT" == "nodes-csv" ]; then
+    node_csv "$NODES_JSON" "$CLUSTER_ID"
 else
+    # Per-node details
+    echo ""
+    node_table_tsv "$NODES_JSON" | print_table 9,10
+
+    # Summary by node group
     border="+------------+-------+-------------+-----------------+"
     row() { printf '| %-10s | %5s | %11s | %15s |\n' "$@"; }
 
