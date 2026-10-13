@@ -3,6 +3,7 @@ name: Release
 # Publishes a release when a v0.x tag is pushed:
 #   verify -> CI tests -> build and push image -> Docker Scout gate -> move "latest"
 #   -> update the Docker Hub description -> create the GitHub release
+# The tag message's first line is the release title; the rest of the message opens the release notes.
 # Run it manually ("Run workflow") for a dry run that builds the image without publishing anything.
 #
 # Requires the repository variable DOCKERHUB_USERNAME and the secret DOCKERHUB_TOKEN
@@ -172,17 +173,7 @@ jobs:
             echo "Release $tag already exists; leaving it unchanged" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          previous=$(git tag --list 'v0.*' --sort=-version:refname | grep -vx "$tag" | head -1)
-          {
-            echo "**Docker image:** \`$IMAGE:$VERSION\` (also \`latest\`), for ${PLATFORMS//,/ and }."
-            echo '```bash'
-            echo "docker pull ${IMAGE#docker.io/}:$VERSION"
-            echo '```'
-            echo ""
-            echo "Docker Scout found no fixable critical or high vulnerabilities in this image."
-            echo ""
-            gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$tag" \
-              ${previous:+-f previous_tag_name="$previous"} -q .body
-          } > notes.md
+          git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
+          scripts/release-notes.sh "$tag" > notes.md
           gh release create "$tag" --verify-tag --latest --title "$TITLE" --notes-file notes.md
           echo "Created release $tag" >> "$GITHUB_STEP_SUMMARY"

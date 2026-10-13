@@ -188,13 +188,20 @@ Releases are published by `.github/workflows/release.yml` when a `v0.x` tag is p
     scripts/prepare-release.sh 0.5.2 "Short description for the Docker Hub tags table"
     ```
 
-2. **Publish.** After the pull request merges, tag `main`. The tag message becomes the release title:
+2. **Publish.** After the pull request merges, tag `main` with an annotated tag and push it:
 
     ```bash
     git checkout main && git pull
-    git tag -a v0.5.2 -m "Release v0.5.2: Short title"
+    git tag -a v0.5.2 -m "Release v0.5.2: Short title" \
+      -m "One or two sentences on what changed for users." \
+      -m "- Notable change
+    - Another notable change"
     git push origin v0.5.2
     ```
+
+    The tag message's first line (without `Release `) becomes the release title. The rest of the message becomes the summary at the top of the release notes, written in Markdown. Each `-m` starts a new paragraph. Git removes lines starting with `#` from tag messages, so don't use Markdown headings; add `--cleanup=verbatim` if you need them. To write a longer message in your editor, run `git tag -a v0.5.2` with no `-m`.
+
+    To preview the notes before pushing the tag, run `scripts/release-notes.sh v0.5.2`.
 
 The workflow then does the rest:
 1. Checks that the tag is on `main` and matches the `Dockerfile` version.
@@ -203,7 +210,7 @@ The workflow then does the rest:
 4. Runs Docker Scout and stops if there are any fixable critical or high vulnerabilities. In that case `latest` and the release are left untouched.
 5. Moves `latest`.
 6. Updates the Docker Hub description from `DOCKERHUB.md`.
-7. Creates the GitHub release, with notes generated from the merged pull requests. Edit the notes afterwards if needed.
+7. Creates the GitHub release: the tag message summary, the image and scan result, and the pull requests merged since the previous release.
 
 To check the pipeline without publishing anything, run the **Release** workflow manually from the Actions tab. It builds both platforms and runs the tests, but skips every publishing step.
 
