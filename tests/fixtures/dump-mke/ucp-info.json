@@ -1,0 +1,89 @@
+{
+    "Name": "mke-mgr-01",
+    "OperatingSystem": "Red Hat Enterprise Linux 8.10 (Ootpa)",
+    "KernelVersion": "4.18.0-553.el8_10.x86_64",
+    "ServerVersion": "ucp/3.8.8",
+    "Swarm": {
+        "Cluster": {
+            "ID": "sy6lsontsk9fixture00000000"
+        }
+    },
+    "SystemStatus": [
+        [
+            "Role",
+            "primary"
+        ],
+        [
+            "Strategy",
+            "spread"
+        ],
+        [
+            "Nodes",
+            "4"
+        ],
+        [
+            " mke-mgr-01",
+            "10.0.0.11:12376"
+        ],
+        [
+            "  └ ID",
+            "AAAA"
+        ],
+        [
+            "  └ Status",
+            "Healthy"
+        ],
+        [
+            "  └ Labels",
+            "kernelversion=4.18.0-553.el8_10.x86_64, operatingsystem=Red Hat Enterprise Linux 8.10 (Ootpa), ostype=linux, storagedriver=overlay2"
+        ],
+        [
+            " mke-mgr-02",
+            "10.0.0.12:12376"
+        ],
+        [
+            "  └ ID",
+            "BBBB"
+        ],
+        [
+            "  └ Status",
+            "Healthy"
+        ],
+        [
+            "  └ Labels",
+            "kernelversion=4.18.0-553.el8_10.x86_64, operatingsystem=Red Hat Enterprise Linux 8.10 (Ootpa), ostype=linux, storagedriver=overlay2"
+        ],
+        [
+            " mke-wkr-01",
+            "10.0.0.21:12376"
+        ],
+        [
+            "  └ ID",
+            "CCCC"
+        ],
+        [
+            "  └ Status",
+            "Unhealthy"
+        ],
+        [
+            "  └ Labels",
+            "kernelversion=5.15.0-122-generic, operatingsystem=Ubuntu 22.04.5 LTS, ostype=linux, storagedriver=overlay2"
+        ],
+        [
+            " mke-win-01",
+            "10.0.0.31:12376"
+        ],
+        [
+            "  └ ID",
+            "DDDD"
+        ],
+        [
+            "  └ Status",
+            "Healthy"
+        ],
+        [
+            "  └ Labels",
+            "kernelversion=10.0 20348 (20348.1.amd64fre.fe_release.210507-1500), operatingsystem=Windows Server 2022 Datacenter Version 2009 (OS Build 20348.2700), ostype=windows"
+        ]
+    ]
+}

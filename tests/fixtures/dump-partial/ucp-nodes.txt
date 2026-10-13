@@ -1,0 +1,142 @@
+[
+    {
+        "ID": "dhxtp9mxnmq1a2b3c4d5e6f7g",
+        "CreatedAt": "2025-10-08T05:27:09.123Z",
+        "UpdatedAt": "2026-05-21T21:17:57.456Z",
+        "Spec": {
+            "Role": "manager",
+            "Availability": "active",
+            "Labels": {
+                "com.docker.ucp.access.label": "/System",
+                "com.docker.ucp.orchestrator.swarm": "true",
+                "com.docker.ucp.orchestrator.kubernetes": "true"
+            }
+        },
+        "Description": {
+            "Hostname": "mke-mgr-01",
+            "Platform": {
+                "OS": "linux",
+                "Architecture": "x86_64"
+            },
+            "Engine": {
+                "EngineVersion": "25.0.14m1"
+            },
+            "Resources": {
+                "NanoCPUs": 8000000000,
+                "MemoryBytes": 33436282880
+            }
+        },
+        "Status": {
+            "State": "ready",
+            "Addr": "10.0.0.11",
+            "Message": "Healthy MKE manager"
+        },
+        "ManagerStatus": {
+            "Leader": true,
+            "Reachability": "reachable",
+            "Addr": "10.0.0.11:2377"
+        }
+    },
+    {
+        "ID": "0q6fb3zoxzq1a2b3c4d5e6f7g",
+        "CreatedAt": "2025-10-08T05:45:05.123Z",
+        "UpdatedAt": "2026-05-21T21:18:24.456Z",
+        "Spec": {
+            "Role": "manager",
+            "Availability": "active",
+            "Labels": {
+                "com.docker.ucp.access.label": "/System",
+                "com.docker.ucp.orchestrator.swarm": "true",
+                "com.docker.ucp.orchestrator.kubernetes": "true"
+            }
+        },
+        "Description": {
+            "Hostname": "mke-mgr-02",
+            "Platform": {
+                "OS": "linux",
+                "Architecture": "x86_64"
+            },
+            "Engine": {
+                "EngineVersion": "25.0.14m1"
+            },
+            "Resources": {
+                "NanoCPUs": 8000000000,
+                "MemoryBytes": 33436282880
+            }
+        },
+        "Status": {
+            "State": "ready",
+            "Addr": "10.0.0.12",
+            "Message": "Healthy MKE manager"
+        },
+        "ManagerStatus": {
+            "Leader": false,
+            "Reachability": "reachable",
+            "Addr": "10.0.0.12:2377"
+        }
+    },
+    {
+        "ID": "nc04ffoz5bq1a2b3c4d5e6f7g",
+        "CreatedAt": "2025-10-08T08:34:35.123Z",
+        "UpdatedAt": "2026-05-21T21:17:58.456Z",
+        "Spec": {
+            "Role": "worker",
+            "Availability": "active",
+            "Labels": {
+                "com.docker.ucp.access.label": "/Shared",
+                "com.docker.ucp.orchestrator.kubernetes": "true"
+            }
+        },
+        "Description": {
+            "Hostname": "mke-wkr-01",
+            "Platform": {
+                "OS": "linux",
+                "Architecture": "x86_64"
+            },
+            "Engine": {
+                "EngineVersion": "25.0.14m1"
+            },
+            "Resources": {
+                "NanoCPUs": 12000000000,
+                "MemoryBytes": 66989436928
+            }
+        },
+        "Status": {
+            "State": "down",
+            "Addr": "10.0.0.21",
+            "Message": "Calico CNI Plugin Pod is Unhealthy: unexpected calico-node pod condition Ready False ContainersNotReady: containers with unready status: [calico-node]"
+        }
+    },
+    {
+        "ID": "w1nd0ws0001q1a2b3c4d5e6f7",
+        "CreatedAt": "2025-10-09T10:00:00.000Z",
+        "UpdatedAt": "2026-05-21T21:18:30.000Z",
+        "Spec": {
+            "Role": "worker",
+            "Availability": "drain",
+            "Labels": {
+                "com.docker.ucp.access.label": "/Shared",
+                "com.docker.ucp.orchestrator.kubernetes": "true"
+            }
+        },
+        "Description": {
+            "Hostname": "mke-win-01",
+            "Platform": {
+                "OS": "windows",
+                "Architecture": "x86_64"
+            },
+            "Engine": {
+                "EngineVersion": "25.0.14m1"
+            },
+            "Resources": {
+                "NanoCPUs": 4000000000,
+                "MemoryBytes": 17179869184
+            }
+        },
+        "Status": {
+            "State": "ready",
+            "Addr": "10.0.0.31",
+            "Message": "Healthy MKE worker"
+        }
+    }
+]

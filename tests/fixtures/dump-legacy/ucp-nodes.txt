@@ -1,0 +1,66 @@
+[
+    {
+        "ID": "node1",
+        "Spec": {
+            "Role": "manager"
+        },
+        "Description": {
+            "Hostname": "host1",
+            "Platform": {
+                "OS": "linux"
+            },
+            "Resources": {
+                "NanoCPUs": 4000000000,
+                "MemoryBytes": 17179869184
+            }
+        }
+    },
+    {
+        "ID": "node2",
+        "Spec": {
+            "Role": "worker"
+        },
+        "Description": {
+            "Hostname": "host2",
+            "Platform": {
+                "OS": "linux"
+            },
+            "Resources": {
+                "NanoCPUs": 8000000000,
+                "MemoryBytes": 34359738368
+            }
+        }
+    },
+    {
+        "ID": "node3",
+        "Spec": {
+            "Role": "worker"
+        },
+        "Description": {
+            "Hostname": "host3",
+            "Platform": {
+                "OS": "linux"
+            },
+            "Resources": {
+                "NanoCPUs": 8000000000,
+                "MemoryBytes": 34359738368
+            }
+        }
+    },
+    {
+        "ID": "node4",
+        "Spec": {
+            "Role": "worker"
+        },
+        "Description": {
+            "Hostname": "host4",
+            "Platform": {
+                "OS": "windows"
+            },
+            "Resources": {
+                "NanoCPUs": 16000000000,
+                "MemoryBytes": 68719476736
+            }
+        }
+    }
+]

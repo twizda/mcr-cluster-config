@@ -1,1 +1,35 @@
+# --- Audit output (may contain customer cluster data) ---
+*.csv
+*.json
+!tests/**/*.json
+cluster_report*
+nodes.csv
+
+# --- Credentials and client bundles ---
+*.pem
+*.env
+.env
+env.sh
+env.ps1
+env.cmd
+kube.yml
+mke_password*
+
+# --- Support dumps ---
+docker-support-*/
+*.tar.gz
+*.zip
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# --- Editors and OS ---
 *.swp
+*.swo
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

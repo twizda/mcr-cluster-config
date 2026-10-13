@@ -1,45 +1,92 @@
-# mirantis/mcr-cluster-config
+# twizda/mcr-cluster-config
 
-Docker image for auditing a Swarm/UCP cluster to return the core counts and other sizing stats based on `alpine:latest`.
+Audits a Docker Swarm / Mirantis Kubernetes Engine (MKE, formerly UCP) cluster and reports every node's role, state, operating system, engine version, vCPUs and RAM, with totals by role and OS. Use it for license sizing and capacity reviews.
 
-To pull this image:
-`docker pull twizda/mcr-cluster-config`
+The project has two scripts:
+- **`swarm-core-audit.sh`** reads a live cluster through the Docker or MKE API. It is the entrypoint of the [`twizda/mcr-cluster-config`](https://hub.docker.com/r/twizda/mcr-cluster-config) image.
+- **`support-dump-count-cores.sh`** reads an extracted MKE support dump, for when you have no API access.
+
+```bash
+docker pull twizda/mcr-cluster-config
+```
 
 > **Note:** This project was previously published as `mirantis/audit-cluster`. That image is no longer updated; use `twizda/mcr-cluster-config` instead.
 
-The Docker Hub description is maintained in [DOCKERHUB.md](DOCKERHUB.md). Update it with each release, and paste it into the repository settings on Docker Hub.
+## Ways to run the audit
 
-## v0.2 Enhancements
-* **Performance Optimization**: API calls are now bundled, fetching all node data in a single request to reduce network overhead.
-* **Output Formats**: Added support for `--json` and `--csv` flags for both live audit and support dump scripts.
-* **Cross-Platform Support**: Optimized for both modern Linux (Bash 4+) and legacy macOS (Bash 3.2).
-* **CLI Options**: Integrated a usage menu and flag parsing for better usability.
-* **Memory**: Adds output for node memory
+| Method | Use when | Operating system shown for |
+|---|---|---|
+| [**Through MKE with a client bundle**](#through-mke-with-a-client-bundle-recommended) (recommended) | You can download an MKE client bundle | All nodes |
+| [**On a manager node**](#on-a-manager-node) | You're on a Swarm manager without MKE, or can't use a client bundle | Only the node the container runs on |
+| [**From a support dump**](#from-a-support-dump) | You only have an MKE support dump | Nodes with `docker info` output in the dump |
 
-## Example Usage
+### Through MKE with a client bundle (recommended)
 
-There are three methods to run this audit:
+1. Download and extract a client bundle for an MKE user that can view nodes.
+2. Run the container from any machine with Docker, pointing `UCP_URL` at MKE and mounting the bundle at `/data`:
 
-1. [**On the cluster**](#on-the-cluster) - Run it directly on a manager via the Docker socket.
-2. [**On a local engine**](#on-a-local-engine) - Communicate to UCP APIs using a client bundle.
-3. [**From a UCP support dump**](#from-a-ucp-support-dump) - Analyze static files locally using the provided script.
+    ```bash
+    docker run -t --rm --name mcr-cluster-config \
+      -e UCP_URL="mke.example.com" \
+      -v /path/to/your/client/bundle:/data:ro \
+      twizda/mcr-cluster-config
+    ```
 
-### CLI Flags
-Both `swarm-core-audit.sh` (the container's entrypoint) and `support-dump-count-cores.sh` support the following:
-* `--json`: Output the summary and per-node details in JSON format.
-* `--csv`: Output the summary by node group in CSV format.
-* `--nodes-csv`: Output per-node details in CSV format, one row per node.
-* `--help`: Display the usage menu.
+The bundle's `key.pem` and `cert.pem` are used to authenticate, and `ca.pem` is used to verify MKE's certificate.
 
-When running the container, add the flag after the image name. Drop `-t` when redirecting output to a file, otherwise the file gets Windows-style (CRLF) line endings:
+### On a manager node
+
+Run the container on a Swarm manager with the Docker socket mounted:
 
 ```bash
-docker run --rm -v /var/run/docker.sock:/var/run/docker.sock twizda/mcr-cluster-config --nodes-csv > nodes.csv
+docker run -t --rm --name mcr-cluster-config \
+  -v /var/run/docker.sock:/var/run/docker.sock \
+  twizda/mcr-cluster-config
+```
+
+With an MKE client bundle loaded in your shell, add `-e affinity:container==ucp-controller` so MKE schedules the container on a manager. Either way, the container talks to that node's local engine, so the **Operating System** column is filled in only for that node, and a `WARN` says so. Use the client-bundle method above to get every node's operating system.
+
+### From a support dump
+
+Run the script from the directory where the support dump was extracted:
+
+```bash
+./support-dump-count-cores.sh
+```
+
+It prints the same per-node table as the container, read from the dump's `ucp-nodes.txt`, with each node's operating system taken from any `docker info` output in the dump. It follows that with a core-distribution table and a summary table.
+
+It needs `bash`, `awk` and `bc`, and works with the bash 3.2 that ships with macOS. Per-node details also need `jq`; without it, the script prints a warning and shows only the summary.
+
+## Options
+
+Both scripts accept the same options:
+
+| Option | Output |
+|---|---|
+| *(none)* | Per-node table and summary table |
+| `--csv` | Summary CSV, one row per node group |
+| `--nodes-csv` | Per-node CSV, one row per node |
+| `--json` | Summary and per-node details in JSON |
+| `--help` | Usage |
+
+When running the container, add the option after the image name. Drop `-t` when redirecting output to a file, otherwise the file gets Windows-style (CRLF) line endings:
+
+```bash
+docker run --rm -e UCP_URL="mke.example.com" -v /path/to/bundle:/data:ro \
+  twizda/mcr-cluster-config --nodes-csv > nodes.csv
 ```
 
 In `--csv` and `--json` output, every group (all, manager, worker, linux, windows) is included, even when it has zero nodes, so the columns stay consistent between clusters.
 
-### Collected data
+### Environment variables
+
+| Variable | Description |
+|---|---|
+| `UCP_URL` | MKE host (no `https://`). If set, the API is reached using the client bundle mounted at `/data`. Otherwise, `/var/run/docker.sock` is used. |
+| `NO_COLOR` | Set to any value to turn off colored log output. |
+
+## Collected data
 The audit uses the same information as `docker info`, `docker version` and `docker node ls`.
 
 **Cluster:** cluster ID; the connected node's OS, kernel and engine version; MKE version (when connected through MKE) and MSR version (when MSR runs on the cluster).
@@ -71,7 +118,7 @@ Nodes that aren't `ready` and `active` are also reported as `WARN` messages, wit
 
 Uptime, hypervisor and GPU aren't available from `docker info` or `docker node ls`, so they aren't collected.
 
-### Example output
+## Example output
 By default, the audit prints a per-node table followed by a summary table. Progress and error messages are written to stderr in the standard Mirantis log format (`INFO`, `WARN`, `FATA`), so redirecting `--csv`, `--nodes-csv` or `--json` output to a file captures only the data. With `-t`, levels are colored (cyan, yellow and red); set `NO_COLOR=1` to turn colors off.
 
 ```text
@@ -110,35 +157,31 @@ If the container can't reach the API, it exits with an error such as:
 FATA[0000] Missing docker.sock. You must run the container with "-v /var/run/docker.sock:/var/run/docker.sock" or set UCP_URL with a client bundle mounted at /data
 ```
 
-### On the cluster
+## Development
 
-1. Load a UCP client bundle (or skip the bundle and run directly on a manager).
-2. Run the container:
+### Tests
+The `tests` directory has three test scripts. CI runs all of them on every pull request and push to `main`; see `.github/workflows/ci.yml`.
 
-    ```bash
-    docker run -t --rm --name mcr-cluster-config \
-      -v /var/run/docker.sock:/var/run/docker.sock \
-      -e affinity:container==ucp-controller \
-      twizda/mcr-cluster-config
-    ```
+| Script | What it checks | Needs |
+|---|---|---|
+| `tests/check-shared-code.sh` | The code shared by both scripts is identical | `bash` |
+| `tests/run-dump-tests.sh` | The support-dump script against the sample dumps in `tests/fixtures`, compared with `tests/expected` | `bash`, `jq`, `bc` |
+| `tests/run-swarm-tests.sh` | The image against a throwaway two-node Docker-in-Docker swarm, and a mock MKE API | Docker (privileged containers) |
 
-### On a local engine
+CI also runs ShellCheck, and runs the support-dump tests on macOS with its built-in bash 3.2.
 
-1. Find your UCP URL and the local path to your extracted client bundle.
-2. Run the container locally, updating `UCP_URL` and the volume path:
-
-    ```bash
-    docker run -t --rm --name mcr-cluster-config \
-      -e UCP_URL="ucp.example.com" \
-      -v /path/to/your/client/bundle:/data:ro \
-      twizda/mcr-cluster-config
-    ```
-
-### From a UCP support dump
-
-Analyze static files from a support dump locally. This is useful when API access is restricted.
-
-Run the script from the directory where the support dump was extracted. By default it prints the same per-node table as the container (read from the dump's `ucp-nodes.txt`, with each node's operating system taken from any `docker info` output in the dump), followed by a core-distribution table and a summary table. It needs `bash`, `awk` and `bc`, and works with the bash 3.2 that ships with macOS. Per-node details also need `jq`; without it, the script prints a warning and shows only the summary.
+After a deliberate output change, regenerate the expected files, then review the diff before committing:
 
 ```bash
-./support-dump-count-cores.sh --csv > cluster_report.csv
+tests/run-dump-tests.sh --update
+```
+
+### Shared code
+Both scripts contain the same logging and per-node code, between `# >>> shared:<name>` and `# <<< shared:<name>` markers. The copies let the support-dump script be downloaded on its own. Change both copies together; `tests/check-shared-code.sh` fails if they differ.
+
+### Releases
+1. Bump the `version` label in the `Dockerfile` and update the tags table and scan result in [DOCKERHUB.md](DOCKERHUB.md).
+2. After merging, build and push the image for `linux/amd64` and `linux/arm64` with provenance and an SBOM, tagged with the version and `latest`.
+3. Tag the release (`vX.Y.Z`), create the GitHub release, and paste `DOCKERHUB.md` into the repository overview on Docker Hub.
+
+The `3.0` branch holds a separate tool, the Python MKE inventory tool, released as `v3.x`. Releases on `main` (`v0.x`) are this Swarm/MKE audit.
