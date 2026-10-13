@@ -10,7 +10,8 @@ Source code, issues and release notes: **https://github.com/twizda/mcr-cluster-c
 
 | Tag | Notes |
 |---|---|
-| `0.4.1`, `latest` | Security update: zlib CVE-2026-85091 fixed; Alpine 3.24 base pinned by digest |
+| `0.5.0`, `latest` | Per-node details: role, state, address, engine, MKE orchestrators and status; new `--nodes-csv` option |
+| `0.4.1` | Security update: zlib CVE-2026-85091 fixed; Alpine 3.24 base pinned by digest |
 | `0.4.0` | Table output and Mirantis-style log messages |
 | `0.3.2` | Working `--json` / `--csv` flags |
 
@@ -100,10 +101,10 @@ docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
 
 ## No API access?
 
-If you only have a UCP support dump, use [`support-dump-count-cores.sh`](https://github.com/twizda/mcr-cluster-config/blob/v0.4.1/support-dump-count-cores.sh) from the GitHub repository. Run it in the extracted dump directory. It produces the same totals, without Docker.
+If you only have a UCP support dump, use [`support-dump-count-cores.sh`](https://github.com/twizda/mcr-cluster-config/blob/v0.5.0/support-dump-count-cores.sh) from the GitHub repository. Run it in the extracted dump directory. It produces the same per-node table and totals, without Docker. Per-node details need `jq`.
 
 ## Security
 
-- Docker Scout reports **0 known vulnerabilities** for `0.4.1` (amd64 and arm64).
+- Docker Scout reports **0 known vulnerabilities** for `0.5.0` (amd64 and arm64).
 - The container runs as root, because it needs to read `/var/run/docker.sock`. It only sends read-only `GET` requests (`/_ping`, `/nodes`, `/info`).
 - Report security issues through [GitHub](https://github.com/twizda/mcr-cluster-config/issues).
