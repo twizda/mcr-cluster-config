@@ -51,4 +51,6 @@ git --no-pager diff --stat -- Dockerfile DOCKERHUB.md
 echo ""
 echo "Next: open a pull request with these changes. After it merges, publish with:"
 echo "  git checkout main && git pull"
-echo "  git tag -a v$version -m \"Release v$version: <title>\" && git push origin v$version"
+echo "  git tag -a v$version -m \"Release v$version: <title>\" -m \"<summary for the release notes>\""
+echo "  scripts/release-notes.sh v$version   # optional preview"
+echo "  git push origin v$version"
