@@ -7,6 +7,8 @@ To pull this image:
 
 > **Note:** This project was previously published as `mirantis/audit-cluster`. That image is no longer updated; use `twizda/mcr-cluster-config` instead.
 
+The Docker Hub description is maintained in [DOCKERHUB.md](DOCKERHUB.md). Update it with each release, and paste it into the repository settings on Docker Hub.
+
 ## v0.2 Enhancements
 * **Performance Optimization**: API calls are now bundled, fetching all node data in a single request to reduce network overhead.
 * **Output Formats**: Added support for `--json` and `--csv` flags for both live audit and support dump scripts.
