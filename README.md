@@ -136,6 +136,7 @@ Uptime, hypervisor and GPU aren't available from `docker info` or `docker node l
 By default, the audit prints a per-node table followed by a summary table. Progress and error messages are written to stderr in the standard Mirantis log format (`INFO`, `WARN`, `FATA`), so redirecting `--csv`, `--nodes-csv` or `--json` output to a file captures only the data. With `-t`, levels are colored (cyan, yellow and red); set `NO_COLOR=1` to turn colors off.
 
 ```text
+INFO[0000] mcr-cluster-config version 0.5.4
 INFO[0000] Connected to MKE at https://mke.example.com
 INFO[0000] Cluster ID: 4ysfudgvpfagt1yy0gwf9viqi
 INFO[0000] MKE version: 3.8.8

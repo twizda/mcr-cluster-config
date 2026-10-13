@@ -50,6 +50,7 @@ Run this with your local Docker, in a shell where the client bundle is **not** l
 ## Example output
 
 ```text
+INFO[0000] mcr-cluster-config version 0.5.4
 INFO[0000] Connected to MKE at https://mke.example.com
 INFO[0000] Cluster ID: 4ysfudgvpfagt1yy0gwf9viqi
 INFO[0000] MKE version: 3.8.8
