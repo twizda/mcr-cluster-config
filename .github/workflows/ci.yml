@@ -4,12 +4,13 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_call:  # reused by release.yml before publishing
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -17,9 +18,11 @@ jobs:
     name: ShellCheck and shared code
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: ShellCheck
-        run: shellcheck -s bash -S warning swarm-core-audit.sh support-dump-count-cores.sh tests/*.sh
+        run: shellcheck -s bash -S warning swarm-core-audit.sh support-dump-count-cores.sh tests/*.sh scripts/*.sh
+      - name: actionlint
+        run: docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.7 -no-color
       - name: Shared code is identical in both scripts
         run: tests/check-shared-code.sh
 
@@ -32,7 +35,7 @@ jobs:
         os: [ubuntu-24.04, macos-15]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Run support dump tests
         run: /bin/bash tests/run-dump-tests.sh
 
@@ -40,6 +43,6 @@ jobs:
     name: Swarm and mock MKE tests
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Run swarm tests
         run: tests/run-swarm-tests.sh

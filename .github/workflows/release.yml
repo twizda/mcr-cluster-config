@@ -1,0 +1,188 @@
+name: Release
+
+# Publishes a release when a v0.x tag is pushed:
+#   verify -> CI tests -> build and push image -> Docker Scout gate -> move "latest"
+#   -> update the Docker Hub description -> create the GitHub release
+# Run it manually ("Run workflow") for a dry run that builds the image without publishing anything.
+#
+# Requires the repository variable DOCKERHUB_USERNAME and the secret DOCKERHUB_TOKEN
+# (a Docker Hub personal access token with Read, Write, Delete scope).
+
+on:
+  push:
+    tags: ['v0.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  IMAGE: docker.io/twizda/mcr-cluster-config
+  PLATFORMS: linux/amd64,linux/arm64
+
+jobs:
+  verify:
+    name: Verify release
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      title: ${{ steps.meta.outputs.title }}
+      publish: ${{ steps.meta.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Check version, branch and Docker Hub description
+        id: meta
+        run: |
+          label=$(sed -n 's/.*version="\([^"]*\)".*/\1/p' Dockerfile)
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            tag=${GITHUB_REF_NAME}
+            version=${tag#v}
+            publish=true
+            git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
+            subject=$(git for-each-ref "refs/tags/$tag" --format='%(contents:subject)')
+            title=${subject#Release }
+            [ -n "$title" ] || title=$tag
+            git merge-base --is-ancestor "$GITHUB_SHA" origin/main \
+              || { echo "::error::Tag $tag is not on main"; exit 1; }
+            [ "$label" = "$version" ] \
+              || { echo "::error::Dockerfile version label ($label) does not match tag $tag. Run scripts/prepare-release.sh first."; exit 1; }
+          else
+            version=$label
+            publish=false
+            title="v$version (dry run)"
+          fi
+          grep -q "^| \`$version\`, \`latest\` |" DOCKERHUB.md \
+            || { echo "::error::DOCKERHUB.md has no tags-table row for $version marked latest. Run scripts/prepare-release.sh first."; exit 1; }
+          {
+            echo "version=$version"
+            echo "title=$title"
+            echo "publish=$publish"
+          } >> "$GITHUB_OUTPUT"
+          echo "Version $version, publish=$publish, title: $title" >> "$GITHUB_STEP_SUMMARY"
+
+  tests:
+    name: Tests
+    needs: verify
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    name: Build and publish
+    needs: [verify, tests]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.verify.outputs.version }}
+      PUBLISH: ${{ needs.verify.outputs.publish }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+      - name: Log in to Docker Hub
+        if: env.PUBLISH == 'true'
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Push only the version tag first; "latest" moves after the security scan passes
+      - name: Build and push ${{ env.VERSION }}
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: .
+          platforms: ${{ env.PLATFORMS }}
+          push: ${{ env.PUBLISH == 'true' }}
+          no-cache: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ env.IMAGE }}:${{ env.VERSION }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Docker Scout gate (linux/amd64)
+        if: env.PUBLISH == 'true'
+        uses: docker/scout-action@221e7f4860634eeb1579e3bd7ca232e577bd1864  # v1.26.0
+        with:
+          command: cves
+          image: registry://${{ env.IMAGE }}:${{ env.VERSION }}
+          platform: linux/amd64
+          only-fixed: true
+          only-severities: critical,high
+          exit-code: true
+          write-comment: false
+          dockerhub-user: ${{ vars.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Docker Scout gate (linux/arm64)
+        if: env.PUBLISH == 'true'
+        uses: docker/scout-action@221e7f4860634eeb1579e3bd7ca232e577bd1864  # v1.26.0
+        with:
+          command: cves
+          image: registry://${{ env.IMAGE }}:${{ env.VERSION }}
+          platform: linux/arm64
+          only-fixed: true
+          only-severities: critical,high
+          exit-code: true
+          write-comment: false
+          dockerhub-user: ${{ vars.DOCKERHUB_USERNAME }}
+          dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Move latest to ${{ env.VERSION }}
+        if: env.PUBLISH == 'true'
+        run: docker buildx imagetools create --tag "$IMAGE:latest" "$IMAGE:$VERSION"
+
+      - name: Update the Docker Hub description
+        if: env.PUBLISH == 'true'
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          repo=${IMAGE#docker.io/}
+          # Current endpoint first, then the older login endpoint
+          token=$(jq -n --arg u "$DOCKERHUB_USERNAME" --arg p "$DOCKERHUB_TOKEN" '{identifier: $u, secret: $p}' \
+            | curl -sS -X POST https://hub.docker.com/v2/auth/token -H 'Content-Type: application/json' -d @- \
+            | jq -r '.access_token // empty' 2> /dev/null)
+          if [ -z "$token" ]; then
+            token=$(jq -n --arg u "$DOCKERHUB_USERNAME" --arg p "$DOCKERHUB_TOKEN" '{username: $u, password: $p}' \
+              | curl -sS -X POST https://hub.docker.com/v2/users/login -H 'Content-Type: application/json' -d @- \
+              | jq -r '.token // empty' 2> /dev/null)
+          fi
+          [ -n "$token" ] || { echo "::error::Docker Hub authentication failed"; exit 1; }
+          jq -n --rawfile full DOCKERHUB.md '{full_description: $full}' \
+            | curl -sSf -X PATCH "https://hub.docker.com/v2/repositories/$repo/" \
+                -H "Authorization: Bearer $token" -H 'Content-Type: application/json' -d @- > /dev/null
+          current=$(curl -sSf "https://hub.docker.com/v2/repositories/$repo/" | jq -r '.full_description')
+          [ "$current" = "$(cat DOCKERHUB.md)" ] || { echo "::error::Docker Hub description does not match DOCKERHUB.md"; exit 1; }
+          echo "Docker Hub description updated from DOCKERHUB.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create the GitHub release
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ needs.verify.outputs.title }}
+        run: |
+          tag="v$VERSION"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "Release $tag already exists; leaving it unchanged" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          previous=$(git tag --list 'v0.*' --sort=-version:refname | grep -vx "$tag" | head -1)
+          {
+            echo "**Docker image:** \`$IMAGE:$VERSION\` (also \`latest\`), for ${PLATFORMS//,/ and }."
+            echo '```bash'
+            echo "docker pull ${IMAGE#docker.io/}:$VERSION"
+            echo '```'
+            echo ""
+            echo "Docker Scout found no fixable critical or high vulnerabilities in this image."
+            echo ""
+            gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$tag" \
+              ${previous:+-f previous_tag_name="$previous"} -q .body
+          } > notes.md
+          gh release create "$tag" --verify-tag --latest --title "$TITLE" --notes-file notes.md
+          echo "Created release $tag" >> "$GITHUB_STEP_SUMMARY"
