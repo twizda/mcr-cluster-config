@@ -3,6 +3,7 @@ import csv
 import getpass
 import os
 import sys
+import time
 from collections import Counter
 
 # Get environment variables
@@ -20,6 +21,39 @@ TIMEOUT = (15, 60)
 # Leading characters that spreadsheet apps interpret as a formula
 FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 
+# Release version, set by the Dockerfile (unset when run outside the image)
+VERSION = os.getenv("MKE_INVENTORY_VERSION")
+
+# --- Logging ---
+# Mirrors the logrus text format used by Mirantis tooling (and the audit scripts on main),
+# e.g. "INFO[0000] message". Levels are colored only when stderr is a terminal and NO_COLOR is unset.
+START = time.monotonic()
+COLOR = sys.stderr.isatty() and not os.getenv("NO_COLOR")
+LEVEL_COLORS = {"INFO": "\033[36m", "WARN": "\033[33m", "FATA": "\033[31m"}
+
+
+def log(level, message):
+    elapsed = int(time.monotonic() - START)
+    name = f"{LEVEL_COLORS[level]}{level}\033[0m" if COLOR else level
+    print(f"{name}[{elapsed:04d}] {message}", file=sys.stderr, flush=True)
+
+
+def info(message):
+    log("INFO", message)
+
+
+def warn(message):
+    log("WARN", message)
+
+
+def fatal(message):
+    log("FATA", message)
+    sys.exit(1)
+
+
+def plural(count, noun):
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
+
 
 def get_password():
     if PASSWORD_FILE:
@@ -27,8 +61,7 @@ def get_password():
             with open(PASSWORD_FILE) as f:
                 return f.read().rstrip("\r\n")
         except OSError as e:
-            print(f"Error: Unable to read MKE_PASSWORD_FILE: {e}")
-            sys.exit(1)
+            fatal(f"Unable to read MKE_PASSWORD_FILE: {e}")
     if PASSWORD:
         return PASSWORD
     if sys.stdin.isatty():
@@ -38,14 +71,14 @@ def get_password():
 
 def get_verify():
     if INSECURE:
-        print("[!] WARNING: MKE_INSECURE is set. TLS certificate verification is DISABLED.")
-        print("[!] Credentials and API responses can be intercepted. Do not use on untrusted networks.")
+        warn("MKE_INSECURE is set: TLS certificate verification is DISABLED. "
+             "Credentials and API responses can be intercepted; do not use on untrusted networks.")
         requests.packages.urllib3.disable_warnings()
         return False
     if CA_BUNDLE:
         if not os.path.isfile(CA_BUNDLE):
-            print(f"Error: MKE_CA_BUNDLE file not found: {CA_BUNDLE}")
-            sys.exit(1)
+            fatal(f"MKE_CA_BUNDLE file not found: {CA_BUNDLE}. Mount the MKE ca.pem, for example "
+                  f"\"-v /path/to/bundle/ca.pem:{CA_BUNDLE}:ro\".")
         return CA_BUNDLE
     return True
 
@@ -58,10 +91,14 @@ def csv_safe(value):
 
 
 def get_inventory():
+    if VERSION:
+        info(f"MKE inventory tool version {VERSION}")
+
+    if not MKE_HOST or not USERNAME:
+        fatal("MKE_HOST and MKE_USER must be set.")
     password = get_password()
-    if not all([MKE_HOST, USERNAME, password]):
-        print("Error: Please provide MKE_HOST, MKE_USER, and MKE_PASSWORD (or MKE_PASSWORD_FILE).")
-        sys.exit(1)
+    if not password:
+        fatal("No password provided. Run with -it to be prompted, or set MKE_PASSWORD_FILE.")
 
     # Clean up MKE_HOST just in case
     host = MKE_HOST.replace("https://", "").replace("http://", "").strip("/")
@@ -71,7 +108,6 @@ def get_inventory():
     session.verify = get_verify()
 
     # 1. Authenticate
-    print(f"[*] Connecting to {base_url}...")
     try:
         auth_resp = session.post(
             f"{base_url}/auth/login",
@@ -81,30 +117,31 @@ def get_inventory():
         auth_resp.raise_for_status()
         token = auth_resp.json().get("auth_token")
     except requests.exceptions.SSLError as e:
-        print(f"[-] TLS verification failed: {e}")
-        print("[-] Set MKE_CA_BUNDLE to the MKE CA certificate (e.g. ca.pem from a client bundle).")
-        sys.exit(1)
+        fatal(f"TLS verification failed for {base_url}: {e}. "
+              "Set MKE_CA_BUNDLE to the MKE CA certificate (ca.pem from a client bundle).")
+    except requests.exceptions.ConnectionError as e:
+        fatal(f"Unable to connect to MKE at {base_url}: {e}")
     except Exception as e:
-        print(f"[-] Authentication failed: {e}")
-        sys.exit(1)
+        fatal(f"Authentication failed for user {USERNAME}: {e}")
 
     if not token:
-        print("[-] Authentication failed: no auth_token in response.")
-        sys.exit(1)
+        fatal(f"Authentication failed for user {USERNAME}: no auth_token in the response.")
+    info(f"Connected to MKE at {base_url} as {USERNAME}")
 
     session.headers["Authorization"] = f"Bearer {token}"
 
     # 2. Pull Cluster Info
-    print("[*] Fetching cluster info...")
     try:
         info_resp = session.get(f"{base_url}/info", timeout=TIMEOUT)
+        info_resp.raise_for_status()
         info_data = info_resp.json()
         cluster_id = info_data.get('Swarm', {}).get('Cluster', {}).get('ID', 'Unknown')
-    except Exception:
+    except Exception as e:
+        warn(f"Unable to read cluster info (/info): {e}")
         cluster_id = "Unknown"
+    info(f"Cluster ID: {cluster_id}")
 
     # 3. Pull Versions from Swarm Services (Primary for MSR and MKE)
-    print("[*] Searching Swarm services for MSR and MKE versions...")
     msr_version = "N/A"
     mke_container_ver = None
 
@@ -126,13 +163,14 @@ def get_inventory():
                 if ('mirantis/ucp' in image) and not mke_container_ver:
                     mke_container_ver = image.split(':', 1)[-1].split('@')[0]
         else:
-            print(f"[-] /services API returned HTTP {svc_resp.status_code}")
+            warn(f"Unable to list services (/services returned HTTP {svc_resp.status_code}); "
+                 "MSR is reported as N/A and the MKE version is looked up elsewhere")
     except Exception as e:
-        print(f"[-] Error fetching services: {e}")
+        warn(f"Unable to list services (/services): {e}")
 
     # Fallback for MKE version via Kubernetes API (if Swarm services didn't catch it)
     if not mke_container_ver:
-        print("[*] Falling back to Kubernetes API for MKE version...")
+        info("MKE version not found in Swarm services; checking the Kubernetes API")
         try:
             k8s_resp = session.get(f"{base_url}/kubernetes/api/v1/namespaces/kube-system/pods", timeout=TIMEOUT)
             if k8s_resp.ok:
@@ -143,19 +181,17 @@ def get_inventory():
                             mke_container_ver = image.split(':', 1)[-1].split('@')[0]
                             break
             else:
-                print(f"[-] /kubernetes API returned HTTP {k8s_resp.status_code}")
+                warn(f"Unable to list kube-system pods (Kubernetes API returned HTTP {k8s_resp.status_code})")
         except Exception as e:
-            print(f"[-] Error fetching Kubernetes pods: {e}")
+            warn(f"Unable to list kube-system pods (Kubernetes API): {e}")
 
     # 4. Pull Node Data and Aggregate
-    print("[*] Fetching node metadata and aggregating totals...")
     try:
         node_resp = session.get(f"{base_url}/nodes", timeout=TIMEOUT)
         node_resp.raise_for_status()
         nodes = node_resp.json()
     except Exception as e:
-        print(f"[-] Error fetching nodes: {e}")
-        sys.exit(1)
+        fatal(f"Unable to list nodes (/nodes): {e}")
 
     total_nodes = len(nodes)
     total_cores = 0
@@ -204,11 +240,24 @@ def get_inventory():
         mem_strings.append(f"{count}x nodes {ram}GB")
     memory_str = "\n".join(mem_strings)
 
-    mcr_str = ", ".join(mcr_versions)
+    mcr_str = ", ".join(sorted(mcr_versions))
+
+    info(f"Retrieved {plural(total_nodes, 'node')} (managers: {managers}, workers: {workers})")
+    if mke_version == "N/A":
+        warn("MKE version not found in services, the Kubernetes API or node labels")
+    else:
+        info(f"MKE version: {mke_version}")
+    if msr_version != "N/A":
+        info(f"MSR version: {msr_version}")
 
     # 5. Write to CSV
     output_file = os.path.join(OUTPUT_DIR, "mke_cluster_summary.csv")
-    with open(output_file, mode='w', newline='') as f:
+    try:
+        f = open(output_file, mode='w', newline='')
+    except OSError as e:
+        fatal(f"Unable to write {output_file}: {e}. Mount a writable directory at {OUTPUT_DIR} "
+              "and run with --user \"$(id -u):$(id -g)\".")
+    with f:
         writer = csv.writer(f)
 
         writer.writerow([
@@ -231,7 +280,7 @@ def get_inventory():
             memory_str
         ]])
 
-    print(f"[+] Success! Cluster summary written to {output_file}")
+    info(f"Cluster summary written to {output_file}")
 
 if __name__ == "__main__":
     get_inventory()

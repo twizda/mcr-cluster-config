@@ -1,4 +1,4 @@
-# mirantis/mcr-cluster-config: MKE Inventory Tool (v3.0)
+# mirantis/mcr-cluster-config: MKE Inventory Tool (v3.1)
 
 This tool provides a lightweight, containerized way to extract a cluster inventory summary from a **Mirantis Kubernetes Engine (MKE) 3.8** cluster.
 
@@ -70,6 +70,19 @@ Create the password file with `chmod 600`. `MKE_PASSWORD` is still accepted for 
 | `MKE_INSECURE` | No | Set to `true` to disable TLS verification. **Not recommended**: credentials can be intercepted. Prints a warning. |
 
 ### 3. Review the Results
+Progress and errors are logged to stderr in the standard Mirantis format (`INFO`, `WARN`, `FATA`), starting with the tool's version. With `-t`, the levels are colored (cyan, yellow and red); set `NO_COLOR=1` to turn colors off. A successful run looks like this:
+
+```text
+INFO[0000] MKE inventory tool version 3.1.0
+INFO[0000] Connected to MKE at https://mke.example.com as admin
+INFO[0000] Cluster ID: v5hn9sx93ngqj8wvwofbcosp8
+INFO[0001] Retrieved 3 nodes (managers: 1, workers: 2)
+INFO[0001] MKE version: 3.9.7
+INFO[0001] Cluster summary written to /out/mke_cluster_summary.csv
+```
+
+`WARN` lines mean some information couldn't be read. For example, an account without access to services can't detect MSR, and the CSV then shows `N/A`. `FATA` lines stop the run, and no CSV is written.
+
 Once the container finishes, you will find a file named `mke_cluster_summary.csv` in your folder. The CSV includes:
 * **Cluster Name** / **Cluster ID**: The MKE host and Swarm cluster ID.
 * **Total Cores** / **Total Nodes**: Aggregate CPU cores and node count.
@@ -97,13 +110,15 @@ docker scout cves mke-inventory-tool:3.0
 ---
 
 ## Troubleshooting
-**Connection Refused:** Ensure the MKE_HOST is reachable from your Docker container and that you haven't included https:// in the environment variable (the script adds it automatically).
+**`FATA … Unable to connect to MKE`:** Ensure the MKE_HOST is reachable from your Docker container and that you haven't included https:// in the environment variable (the script adds it automatically).
 
-**TLS verification failed:** MKE typically uses a self-signed CA. Set `MKE_CA_BUNDLE` to the MKE `ca.pem` as shown above. Only use `MKE_INSECURE=true` as a last resort on a trusted network.
+**`FATA … TLS verification failed`:** MKE typically uses a self-signed CA. Set `MKE_CA_BUNDLE` to the MKE `ca.pem` as shown above. Only use `MKE_INSECURE=true` as a last resort on a trusted network.
 
-**Permission denied writing the CSV:** Run with `--user "$(id -u):$(id -g)"` so the container can write to the mounted directory.
+**`FATA … Unable to write /out/mke_cluster_summary.csv`:** Run with `--user "$(id -u):$(id -g)"` so the container can write to the mounted directory.
 
-**Auth Failure:** Verify the username and password, and that the account can read nodes and services in MKE.
+**`FATA … Authentication failed for user …`:** Verify the username and password.
+
+**`WARN … Unable to list services` or `MKE version not found`:** The account can't read services (or the Kubernetes API), so MSR shows as `N/A` and the MKE version may be missing. Use an account that can view services, or an admin account.
 
 **Updating dependencies:** Python dependencies are pinned with hashes in `requirements.txt`. To update, edit `requirements.in` and regenerate with `pip-compile --generate-hashes --strip-extras --allow-unsafe -o requirements.txt requirements.in`. To update the base image, pull `python:3.11-slim` and replace the digest in the `Dockerfile`.
 
