@@ -1,6 +1,13 @@
 # Use a lightweight Python image, pinned by digest for reproducible builds
 FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
 
+# Release version: the single source of truth. The tool logs it at startup,
+# and it fills the image's version label.
+ENV MKE_INVENTORY_VERSION=3.1.0
+LABEL maintainer="Tom Wizda <twizda@mirantis.com>" \
+      version="${MKE_INVENTORY_VERSION}" \
+      description="MKE inventory tool: one-row cluster summary CSV for license sizing"
+
 # Install required libraries (versions and hashes pinned in requirements.txt), then remove
 # the packaging toolchain (pip, setuptools, wheel), which is not needed at runtime and
 # carries its own CVEs
