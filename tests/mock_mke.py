@@ -1,7 +1,8 @@
 """Minimal mock of the MKE API endpoints read by swarm-core-audit.sh, served on a unix socket.
 
-Serves tests/fixtures/mock-mke/*.json at /var/run/docker.sock so the audit image can be
-tested against MKE-style responses (per-node SystemStatus, "ucp/" version, MSR services).
+Serves a fixture directory (info.json, version.json, nodes.json, services.json) at
+/var/run/docker.sock, so the audit image can be tested against MKE-style responses
+(tests/fixtures/mock-mke) or a plain MCR engine without MKE (tests/fixtures/mock-windows).
 """
 import json
 import os
@@ -20,7 +21,7 @@ def load(name):
 ROUTES = {
     "/_ping": "OK",
     "/info": load("info.json"),
-    "/version": {"Version": "ucp/3.8.8"},
+    "/version": load("version.json"),
     "/nodes": load("nodes.json"),
     "/services": load("services.json"),
 }

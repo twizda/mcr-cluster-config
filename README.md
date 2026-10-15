@@ -21,6 +21,7 @@ docker pull twizda/mcr-cluster-config
 | [**Through MKE with a client bundle**](#through-mke-with-a-client-bundle-recommended) (recommended) | You can download an MKE client bundle | All nodes |
 | [**On a manager node**](#on-a-manager-node) | You're on a Swarm manager without MKE, or can't use a client bundle | Only the node the container runs on |
 | [**From a support dump**](#from-a-support-dump) | You only have an MKE support dump | Nodes with `docker info` output in the dump |
+| [**On Windows Server**](#on-windows-server) | The cluster is MCR on Windows Server only, with no Linux machine available | Only the node the script runs on (all nodes through MKE) |
 
 ### Through MKE with a client bundle (recommended)
 
@@ -71,6 +72,18 @@ cd docker-support-<cluster>-<date>
 Run directly, it needs `bash`, `awk` and `bc`, and works with the bash 3.2 that ships with macOS. Per-node details also need `jq`; without it, the script prints a warning and shows only the summary. The image includes all of these.
 
 Either way, it prints the same per-node table as the live audit, read from the dump's `ucp-nodes.txt`, with each node's operating system taken from any `docker info` output in the dump. That's followed by a core-distribution table and a summary table.
+
+### On Windows Server
+
+The image is a Linux container, so it can't run on Windows Server. On a Windows Swarm manager, use the PowerShell version of the audit, `windows/swarm-core-audit.ps1`. It needs no container: only the `docker` CLI that MCR installs and Windows PowerShell 5.1 or later (included in Windows Server 2016 and later). Run PowerShell as Administrator, or as a member of the `docker-users` group:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\swarm-core-audit.ps1
+```
+
+It prints the same tables, log messages and CSV/JSON as the container. Use `-Csv`, `-NodesCsv` or `-Json` for other formats, and `-OutFile <file>` to save them as UTF-8 (redirecting with `>` in Windows PowerShell 5.1 writes UTF-16). Run `Get-Help .\swarm-core-audit.ps1 -Detailed` for all options.
+
+Without MKE, `docker info` only describes the node the script runs on, so the **Operating System** column is filled in for that node only; run the script on each node if you need every node's operating system. With an MKE client bundle loaded (`env.ps1`), every node's operating system is reported.
 
 ## Options
 
@@ -180,7 +193,8 @@ The `tests` directory has three test scripts. CI runs all of them on every pull 
 |---|---|---|
 | `tests/check-shared-code.sh` | The code shared by both scripts is identical | `bash` |
 | `tests/run-dump-tests.sh` | The support-dump script against the sample dumps in `tests/fixtures`, compared with `tests/expected` | `bash`, `jq`, `bc` |
-| `tests/run-swarm-tests.sh` | The image against a throwaway two-node Docker-in-Docker swarm, and a mock MKE API | Docker (privileged containers) |
+| `tests/run-swarm-tests.sh` | The image against a throwaway two-node Docker-in-Docker swarm, and a mock MKE API. Also saves the reference output in `tests/expected/audit-*` | Docker (privileged containers) |
+| `tests/run-powershell-tests.ps1` | `windows/swarm-core-audit.ps1` against the mock clusters; its output must match the same `tests/expected/audit-*` files as the Linux audit | PowerShell 5.1 or 7 |
 
 CI also runs ShellCheck, and runs the support-dump tests on macOS with its built-in bash 3.2.
 

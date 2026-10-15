@@ -33,6 +33,8 @@ fi
 
 # Dockerfile version (ENV line; the image label is filled from it)
 sed -i.bak "s/^ENV MCR_CLUSTER_CONFIG_VERSION=.*/ENV MCR_CLUSTER_CONFIG_VERSION=$version/" Dockerfile && rm -f Dockerfile.bak
+# Windows PowerShell audit carries its own copy of the version
+sed -i.bak "s/^\$ScriptVersion = '.*'/\$ScriptVersion = '$version'/" windows/swarm-core-audit.ps1 && rm -f windows/swarm-core-audit.ps1.bak
 
 # DOCKERHUB.md and HARBOR.md: move "latest" to a new row in the tags table, and point the
 # support-dump link and HARBOR.md's pull example at the new version
@@ -55,7 +57,7 @@ done
 sed -i.bak "s|\(mcr-cluster-config version \)[0-9.]*|\1$version|" README.md && rm -f README.md.bak
 
 echo "Prepared release $version (was $current):"
-git --no-pager diff --stat -- Dockerfile DOCKERHUB.md HARBOR.md README.md
+git --no-pager diff --stat -- Dockerfile DOCKERHUB.md HARBOR.md README.md windows/swarm-core-audit.ps1
 echo ""
 echo "Next: open a pull request with these changes. After it merges, publish with:"
 echo "  git checkout main && git pull"

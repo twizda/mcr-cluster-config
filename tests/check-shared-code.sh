@@ -23,4 +23,12 @@ for r in $regions; do
         echo "ok: shared region '$r' is identical ($(echo "$a" | wc -l | tr -d ' ') lines)"
     fi
 done
+# The Windows PowerShell audit carries its own copy of the release version
+docker_version=$(sed -n 's/^ENV MCR_CLUSTER_CONFIG_VERSION=//p' Dockerfile)
+ps_version=$(sed -n "s/^\\\$ScriptVersion = '\\(.*\\)'/\\1/p" windows/swarm-core-audit.ps1)
+if [ "$ps_version" != "$docker_version" ]; then
+    echo "FAIL: windows/swarm-core-audit.ps1 version ($ps_version) differs from the Dockerfile ($docker_version)"; status=1
+else
+    echo "ok: windows/swarm-core-audit.ps1 version matches the Dockerfile ($docker_version)"
+fi
 exit $status

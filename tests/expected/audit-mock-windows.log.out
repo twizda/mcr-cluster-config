@@ -1,0 +1,8 @@
+INFO[----] mcr-cluster-config version X
+INFO[----] Connected to the Docker API via /var/run/docker.sock
+INFO[----] Cluster ID: w1nclust3r0000000000000000
+INFO[----] Connected node: WIN-MGR-01, Windows Server 2022 Datacenter Version 2009 (OS Build 20348.2700), kernel 10.0 20348 (20348.1.amd64fre.fe_release.210507-1500), engine 25.0.14m1
+INFO[----] Retrieved 4 nodes (managers: 1, workers: 3)
+WARN[----] Operating system found for 1 of 4 nodes. docker info on this engine only describes this node; set UCP_URL with an MKE client bundle to get every node's operating system.
+WARN[----] Node WIN-WKR-02: state down, availability active (heartbeat failure)
+WARN[----] Node win-wkr-03: state ready, availability drain

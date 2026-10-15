@@ -1,0 +1,6 @@
+ClusterID,Role,OS,NodeCount,TotalCores,TotalGiB
+w1nclust3r0000000000000000,all,,4,36,144.00
+w1nclust3r0000000000000000,manager,,1,4,16.00
+w1nclust3r0000000000000000,worker,,3,32,128.00
+w1nclust3r0000000000000000,all,linux,0,0,0.00
+w1nclust3r0000000000000000,all,windows,4,36,144.00

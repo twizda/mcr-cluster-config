@@ -1,10 +1,12 @@
 #!/bin/bash
 # Tests the audit image against a throwaway two-node Docker-in-Docker swarm and a mock MKE API.
-# Requires Docker with privileged containers. Usage: tests/run-swarm-tests.sh
+# Requires Docker with privileged containers.
+# Usage: tests/run-swarm-tests.sh [--update]   (--update rewrites tests/expected/audit-* after a deliberate change)
 TESTS=$(cd "$(dirname "$0")" && pwd)
 REPO="$TESTS/.."
 # shellcheck source=tests/lib.sh
 . "$TESTS/lib.sh"
+[ "$1" == "--update" ] && export UPDATE_GOLDEN=1
 
 IMAGE=mcr-cluster-config:test
 DIND=docker:28-dind
@@ -13,8 +15,8 @@ P=mcc-test-$$
 NET=$P-net
 
 cleanup() {
-    docker rm -f "$P-mgr" "$P-wkr" "$P-mock" > /dev/null 2>&1
-    docker volume rm "$P-mgr-sock" "$P-wkr-sock" "$P-mock-sock" > /dev/null 2>&1
+    docker rm -f "$P-mgr" "$P-wkr" "$P-mock" "$P-mock-mke" "$P-mock-windows" > /dev/null 2>&1
+    docker volume rm "$P-mgr-sock" "$P-wkr-sock" "$P-mock-sock" "$P-mock-mke-sock" "$P-mock-windows-sock" > /dev/null 2>&1
     docker network rm "$NET" > /dev/null 2>&1
 }
 trap cleanup EXIT
@@ -115,6 +117,26 @@ assert_contains "leader OS" "$(echo "$OUT" | grep 'mke-mgr-01')" "| Red Hat Ente
 audit "$P-mock-sock" --json
 assert_equals "--json operating systems" "$(echo "$OUT" | jq -c '[.nodes[].operating_system]' 2>&1)" \
     '["Red Hat Enterprise Linux 8.10 (Ootpa)","Red Hat Enterprise Linux 8.10 (Ootpa)","Windows Server 2022 Datacenter Version 2009 (OS Build 20348.2700)","Ubuntu 22.04.5 LTS"]'
+
+echo "# expected audit output (also the reference for windows/swarm-core-audit.ps1)"
+# Log lines are compared without timings and with the release version masked, so the files
+# don't change with every release.
+normalize_log() { sed -E -e 's/^(INFO|WARN|FATA)\[[0-9]+\]/\1[----]/' -e 's/^(INFO\[----\] mcr-cluster-config version) .*/\1 X/'; }
+for fixture in mock-mke mock-windows; do
+    docker run -d --name "$P-$fixture" -v "$TESTS/mock_mke.py":/mock_mke.py:ro -v "$TESTS/fixtures/$fixture":/fixtures:ro \
+        -v "$P-$fixture-sock":/var/run "$PYTHON" python -I /mock_mke.py > /dev/null
+    for _ in $(seq 1 30); do
+        docker run --rm -v "$P-$fixture-sock":/var/run --entrypoint test "$IMAGE" -S /var/run/docker.sock && break
+        sleep 1
+    done
+    for mode in text csv nodes-csv json; do
+        if [ "$mode" == "text" ]; then audit "$P-$fixture-sock"; else audit "$P-$fixture-sock" "--$mode"; fi
+        assert_equals "$fixture $mode exits 0" "$RC" "0"
+        assert_golden "$fixture $mode output matches tests/expected/audit-$fixture.$mode.out" "$OUT" "$TESTS/expected/audit-$fixture.$mode.out"
+    done
+    audit "$P-$fixture-sock"
+    assert_golden "$fixture log matches tests/expected/audit-$fixture.log.out" "$(echo "$ERR" | normalize_log)" "$TESTS/expected/audit-$fixture.log.out"
+done
 
 echo "# support dump script inside the image"
 dump() {
