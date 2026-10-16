@@ -1,0 +1,6 @@
+ClusterID,Role,OS,NodeCount,TotalCores,TotalGiB
+sy6lsontsk9fixture00000000,all,,4,32,140.66
+sy6lsontsk9fixture00000000,manager,,2,16,62.27
+sy6lsontsk9fixture00000000,worker,,2,16,78.38
+sy6lsontsk9fixture00000000,all,linux,3,28,124.66
+sy6lsontsk9fixture00000000,all,windows,1,4,16.00

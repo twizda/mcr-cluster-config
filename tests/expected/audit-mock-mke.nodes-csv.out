@@ -1,0 +1,5 @@
+"ClusterID","Hostname","NodeID","Role","Availability","State","Address","OS","Arch","OperatingSystem","EngineVersion","vCPUs","RAM_GiB","Created","Updated"
+"sy6lsontsk9fixture00000000","mke-mgr-01","dhxtp9mxnmq1a2b3c4d5e6f7g","leader","active","ready","10.0.0.11","linux","x86_64","Red Hat Enterprise Linux 8.10 (Ootpa)","25.0.14m1",8,31.13,"2025-10-08T05:27:09","2026-05-21T21:17:57"
+"sy6lsontsk9fixture00000000","mke-mgr-02","0q6fb3zoxzq1a2b3c4d5e6f7g","manager","active","ready","10.0.0.12","linux","x86_64","Red Hat Enterprise Linux 8.10 (Ootpa)","25.0.14m1",8,31.13,"2025-10-08T05:45:05","2026-05-21T21:18:24"
+"sy6lsontsk9fixture00000000","mke-win-01","w1nd0ws0001q1a2b3c4d5e6f7","worker","drain","ready","10.0.0.31","windows","x86_64","Windows Server 2022 Datacenter Version 2009 (OS Build 20348.2700)","25.0.14m1",4,16.00,"2025-10-09T10:00:00","2026-05-21T21:18:30"
+"sy6lsontsk9fixture00000000","mke-wkr-01","nc04ffoz5bq1a2b3c4d5e6f7g","worker","active","down","10.0.0.21","linux","x86_64","Ubuntu 22.04.5 LTS","25.0.14m1",12,62.38,"2025-10-08T08:34:35","2026-05-21T21:17:58"

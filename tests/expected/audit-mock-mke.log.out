@@ -1,0 +1,8 @@
+INFO[----] mcr-cluster-config version X
+INFO[----] Connected to the Docker API via /var/run/docker.sock
+INFO[----] Cluster ID: sy6lsontsk9fixture00000000
+INFO[----] MKE version: 3.8.8
+INFO[----] MSR version: 2.9.19
+INFO[----] Retrieved 4 nodes (managers: 2, workers: 2)
+WARN[----] Node mke-wkr-01: state down, availability active (Calico CNI Plugin Pod is Unhealthy: unexpected calico-node pod condition Ready False ContainersNotReady: containers with unready status: [calico-node])
+WARN[----] Node mke-win-01: state ready, availability drain (Healthy MKE worker)

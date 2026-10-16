@@ -1,0 +1,123 @@
+[
+    {
+        "ID": "w1nmgr0001q1a2b3c4d5e6f7g",
+        "CreatedAt": "2026-01-05T09:00:00.000Z",
+        "UpdatedAt": "2026-10-01T12:00:00.000Z",
+        "Spec": {
+            "Role": "manager",
+            "Availability": "active",
+            "Labels": {}
+        },
+        "Description": {
+            "Hostname": "WIN-MGR-01",
+            "Platform": {
+                "OS": "windows",
+                "Architecture": "x86_64"
+            },
+            "Engine": {
+                "EngineVersion": "25.0.14m1"
+            },
+            "Resources": {
+                "NanoCPUs": 4000000000,
+                "MemoryBytes": 17179869184
+            }
+        },
+        "Status": {
+            "State": "ready",
+            "Addr": "10.1.0.11",
+            "Message": ""
+        },
+        "ManagerStatus": {
+            "Leader": true,
+            "Reachability": "reachable",
+            "Addr": "10.1.0.11:2377"
+        }
+    },
+    {
+        "ID": "w1nwkr0001q1a2b3c4d5e6f7g",
+        "CreatedAt": "2026-01-05T09:10:00.000Z",
+        "UpdatedAt": "2026-10-01T12:00:05.000Z",
+        "Spec": {
+            "Role": "worker",
+            "Availability": "active",
+            "Labels": {}
+        },
+        "Description": {
+            "Hostname": "WIN-WKR-01",
+            "Platform": {
+                "OS": "windows",
+                "Architecture": "x86_64"
+            },
+            "Engine": {
+                "EngineVersion": "25.0.14m1"
+            },
+            "Resources": {
+                "NanoCPUs": 8000000000,
+                "MemoryBytes": 34359738368
+            }
+        },
+        "Status": {
+            "State": "ready",
+            "Addr": "10.1.0.21",
+            "Message": ""
+        }
+    },
+    {
+        "ID": "w1nwkr0002q1a2b3c4d5e6f7g",
+        "CreatedAt": "2026-01-05T09:20:00.000Z",
+        "UpdatedAt": "2026-10-01T12:00:10.000Z",
+        "Spec": {
+            "Role": "worker",
+            "Availability": "active",
+            "Labels": {}
+        },
+        "Description": {
+            "Hostname": "WIN-WKR-02",
+            "Platform": {
+                "OS": "windows",
+                "Architecture": "x86_64"
+            },
+            "Engine": {
+                "EngineVersion": "25.0.14m1"
+            },
+            "Resources": {
+                "NanoCPUs": 8000000000,
+                "MemoryBytes": 34359738368
+            }
+        },
+        "Status": {
+            "State": "down",
+            "Addr": "10.1.0.22",
+            "Message": "heartbeat failure"
+        }
+    },
+    {
+        "ID": "w1nwkr0003q1a2b3c4d5e6f7g",
+        "CreatedAt": "2026-02-10T08:00:00.000Z",
+        "UpdatedAt": "2026-10-01T12:00:15.000Z",
+        "Spec": {
+            "Role": "worker",
+            "Availability": "drain",
+            "Labels": {}
+        },
+        "Description": {
+            "Hostname": "win-wkr-03",
+            "Platform": {
+                "OS": "windows",
+                "Architecture": "x86_64"
+            },
+            "Engine": {
+                "EngineVersion": "25.0.14m1"
+            },
+            "Resources": {
+                "NanoCPUs": 16000000000,
+                "MemoryBytes": 68719476736
+            }
+        },
+        "Status": {
+            "State": "ready",
+            "Addr": "10.1.0.23",
+            "Message": ""
+        }
+    }
+]

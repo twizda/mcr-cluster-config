@@ -1,0 +1,6 @@
+# Keep LF line endings on every platform, including Git for Windows (core.autocrlf=true):
+# shell scripts run in Linux containers, and test fixtures and expected output are compared
+# byte-for-byte.
+*.sh                text eol=lf
+tests/expected/**   text eol=lf
+tests/fixtures/**   text eol=lf

@@ -1,0 +1,5 @@
+"ClusterID","Hostname","NodeID","Role","Availability","State","Address","OS","Arch","OperatingSystem","EngineVersion","vCPUs","RAM_GiB","Created","Updated"
+"w1nclust3r0000000000000000","WIN-MGR-01","w1nmgr0001q1a2b3c4d5e6f7g","leader","active","ready","10.1.0.11","windows","x86_64","Windows Server 2022 Datacenter Version 2009 (OS Build 20348.2700)","25.0.14m1",4,16.00,"2026-01-05T09:00:00","2026-10-01T12:00:00"
+"w1nclust3r0000000000000000","WIN-WKR-01","w1nwkr0001q1a2b3c4d5e6f7g","worker","active","ready","10.1.0.21","windows","x86_64","","25.0.14m1",8,32.00,"2026-01-05T09:10:00","2026-10-01T12:00:05"
+"w1nclust3r0000000000000000","WIN-WKR-02","w1nwkr0002q1a2b3c4d5e6f7g","worker","active","down","10.1.0.22","windows","x86_64","","25.0.14m1",8,32.00,"2026-01-05T09:20:00","2026-10-01T12:00:10"
+"w1nclust3r0000000000000000","win-wkr-03","w1nwkr0003q1a2b3c4d5e6f7g","worker","drain","ready","10.1.0.23","windows","x86_64","","25.0.14m1",16,64.00,"2026-02-10T08:00:00","2026-10-01T12:00:15"
