@@ -80,7 +80,9 @@ try {
     $imageOsVersion = Get-DockerValue @('image', 'inspect', '--format', '{{.OsVersion}}', $Image)
     Assert-Equal 'image matches the host Windows build' ($imageOsVersion.Split('.')[2]) ([string]$hostBuild)
     $scriptVersion = ((Select-String -LiteralPath $script:AuditScript -Pattern "^\`$ScriptVersion = '(.*)'").Matches[0].Groups[1].Value)
-    Assert-Equal 'image version label matches the script' (Get-DockerValue @('image', 'inspect', '--format', '{{index .Config.Labels "version"}}', $Image)) $scriptVersion
+    # Labels are read as JSON: Windows PowerShell 5.1 mangles double quotes in native-command arguments
+    $labels = ConvertFrom-Json -InputObject (Get-DockerValue @('image', 'inspect', '--format', '{{json .Config.Labels}}', $Image))
+    Assert-Equal 'image version label matches the script' $labels.version $scriptVersion
 
     Write-Output '# output is identical to running the script directly'
     foreach ($options in @(@(), @('--csv'), @('--nodes-csv'), @('--json'))) {
