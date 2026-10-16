@@ -10,7 +10,8 @@ Source code, issues and release notes: **https://github.com/twizda/mcr-cluster-c
 
 | Tag | Notes |
 |---|---|
-| `0.5.4`, `latest` | Support-dump script included in the image (--entrypoint support-dump-count-cores.sh) |
+| `0.6.0`, `latest` | PowerShell audit for Windows Server, attached to each release |
+| `0.5.4` | Support-dump script included in the image (--entrypoint support-dump-count-cores.sh) |
 | `0.5.3` | Clearer MKE connection messages; hints for client-bundle and SELinux setup errors |
 | `0.5.2` | Singular wording ("1 node") and OS/Arch display fixes |
 
@@ -22,7 +23,7 @@ This is a private project. Log in first:
 
 ```bash
 docker login registry.ci.mirantis.com
-docker pull registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config:0.5.4
+docker pull registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config:0.6.0
 ```
 
 ## Quick start
@@ -53,7 +54,7 @@ With an MKE client bundle loaded in your shell, add `-e affinity:container==ucp-
 ## Example output
 
 ```text
-INFO[0000] mcr-cluster-config version 0.5.4
+INFO[0000] mcr-cluster-config version 0.6.0
 INFO[0000] Connected to MKE at https://mke.example.com
 INFO[0000] Cluster ID: 4ysfudgvpfagt1yy0gwf9viqi
 INFO[0000] MKE version: 3.8.8
@@ -108,6 +109,16 @@ docker run --rm -e UCP_URL="mke.example.com" -v /path/to/bundle:/data:ro \
 | `UCP_URL` | MKE host (no `https://`). If set, the API is reached using the client bundle mounted at `/data`. Otherwise, `/var/run/docker.sock` is used. |
 | `NO_COLOR` | Set to any value to turn off colored log output. |
 
+## Windows Server (no container)
+
+This image is a Linux container, so it can't run on Windows Server. For clusters that run MCR on Windows Server, each release also includes a PowerShell version of the audit with the same output: [`swarm-core-audit.ps1`](https://github.com/twizda/mcr-cluster-config/releases/download/v0.6.0/swarm-core-audit.ps1), with its [SHA-256](https://github.com/twizda/mcr-cluster-config/releases/download/v0.6.0/swarm-core-audit.ps1.sha256). It needs only the `docker` CLI and Windows PowerShell 5.1 or later. On a Swarm manager, as Administrator:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\swarm-core-audit.ps1
+```
+
+See the [README](https://github.com/twizda/mcr-cluster-config#on-windows-server) for download and verification steps.
+
 ## No API access?
 
 If you only have an MKE support dump, the image can audit it too. Extract the dump, then run this in its top-level directory:
@@ -118,7 +129,7 @@ docker run --rm -v "$PWD":/dump:ro -w /dump --entrypoint support-dump-count-core
 
 It prints the same per-node table and totals as the live audit, with each node's operating system taken from the `docker info` output in the dump. Add `--csv`, `--nodes-csv` or `--json` for other formats. On SELinux-enforcing hosts such as RHEL, also add `--security-opt label=disable`.
 
-The same script, [`support-dump-count-cores.sh`](https://github.com/twizda/mcr-cluster-config/blob/v0.5.4/support-dump-count-cores.sh), can also be run directly from the GitHub repository; it needs `bash`, `awk`, `bc` and `jq`.
+The same script, [`support-dump-count-cores.sh`](https://github.com/twizda/mcr-cluster-config/blob/v0.6.0/support-dump-count-cores.sh), can also be run directly from the GitHub repository; it needs `bash`, `awk`, `bc` and `jq`.
 
 ## Security
 

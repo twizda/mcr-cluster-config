@@ -75,15 +75,29 @@ Either way, it prints the same per-node table as the live audit, read from the d
 
 ### On Windows Server
 
-The image is a Linux container, so it can't run on Windows Server. On a Windows Swarm manager, use the PowerShell version of the audit, `windows/swarm-core-audit.ps1`. It needs no container: only the `docker` CLI that MCR installs and Windows PowerShell 5.1 or later (included in Windows Server 2016 and later). Run PowerShell as Administrator, or as a member of the `docker-users` group:
+The image is a Linux container, so it can't run on Windows Server. On a Windows Swarm manager, use the PowerShell version of the audit. It needs no container: only the `docker` CLI that MCR installs and Windows PowerShell 5.1 or later (included in Windows Server 2016 and later).
+
+Download it, with its checksum, from the [latest release](https://github.com/twizda/mcr-cluster-config/releases/latest), then verify and run it in PowerShell as Administrator (or as a member of the `docker-users` group):
 
 ```powershell
+[Net.ServicePointManager]::SecurityProtocol = 'Tls12'
+Invoke-WebRequest -UseBasicParsing https://github.com/twizda/mcr-cluster-config/releases/latest/download/swarm-core-audit.ps1 -OutFile swarm-core-audit.ps1
+Invoke-WebRequest -UseBasicParsing https://github.com/twizda/mcr-cluster-config/releases/latest/download/swarm-core-audit.ps1.sha256 -OutFile swarm-core-audit.ps1.sha256
+(Get-FileHash swarm-core-audit.ps1 -Algorithm SHA256).Hash -eq (Get-Content swarm-core-audit.ps1.sha256).Split(' ')[0].ToUpper()
 powershell -ExecutionPolicy Bypass -File .\swarm-core-audit.ps1
 ```
 
-It prints the same tables, log messages and CSV/JSON as the container. Use `-Csv`, `-NodesCsv` or `-Json` for other formats, and `-OutFile <file>` to save them as UTF-8 (redirecting with `>` in Windows PowerShell 5.1 writes UTF-16). Run `Get-Help .\swarm-core-audit.ps1 -Detailed` for all options.
+The first line enables TLS 1.2, which GitHub requires and Windows PowerShell 5.1 on Windows Server 2016 and 2019 may not use by default. The checksum line should print `True`.
 
-Without MKE, `docker info` only describes the node the script runs on, so the **Operating System** column is filled in for that node only; run the script on each node if you need every node's operating system. With an MKE client bundle loaded (`env.ps1`), every node's operating system is reported.
+It prints the same tables, log messages and CSV/JSON as the container. Use `-Csv`, `-NodesCsv` or `-Json` for other formats, and `-OutFile <file>` to save them as UTF-8 (redirecting with `>` in Windows PowerShell 5.1 writes UTF-16):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\swarm-core-audit.ps1 -NodesCsv -OutFile nodes.csv
+```
+
+Run `Get-Help .\swarm-core-audit.ps1 -Detailed` for all options. The script is also in this repository as `windows/swarm-core-audit.ps1`.
+
+Without MKE, `docker info` only describes the node the script runs on, so the **Operating System** column is filled in for that node only; run the script on each node if you need every node's operating system. With an MKE client bundle loaded (`. .\env.ps1`), every node's operating system is reported.
 
 ## Options
 
@@ -149,7 +163,7 @@ Uptime, hypervisor and GPU aren't available from `docker info` or `docker node l
 By default, the audit prints a per-node table followed by a summary table. Progress and error messages are written to stderr in the standard Mirantis log format (`INFO`, `WARN`, `FATA`), so redirecting `--csv`, `--nodes-csv` or `--json` output to a file captures only the data. With `-t`, levels are colored (cyan, yellow and red); set `NO_COLOR=1` to turn colors off.
 
 ```text
-INFO[0000] mcr-cluster-config version 0.5.4
+INFO[0000] mcr-cluster-config version 0.6.0
 INFO[0000] Connected to MKE at https://mke.example.com
 INFO[0000] Cluster ID: 4ysfudgvpfagt1yy0gwf9viqi
 INFO[0000] MKE version: 3.8.8
@@ -239,7 +253,7 @@ The workflow then does the rest:
 4. Runs Docker Scout and stops if there are any fixable critical or high vulnerabilities. In that case `latest` and the release are left untouched.
 5. Moves `latest`.
 6. Updates the Docker Hub description from `DOCKERHUB.md`.
-7. Creates the GitHub release: the tag message summary, the image and scan result, and the pull requests merged since the previous release.
+7. Creates the GitHub release: the tag message summary, the image and scan result, Windows download instructions, and the pull requests merged since the previous release. `windows/swarm-core-audit.ps1` and its SHA-256 (`swarm-core-audit.ps1.sha256`) are attached.
 
 **Afterwards, copy the image to the Mirantis registry.** The workflow has no credentials for `registry.ci.mirantis.com`, so this step is manual. Once the release workflow finishes, run the following while logged in with `docker login registry.ci.mirantis.com`:
 

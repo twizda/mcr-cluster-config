@@ -2,7 +2,8 @@ name: Release
 
 # Publishes a release when a v0.x tag is pushed:
 #   verify -> CI tests -> build and push image -> Docker Scout gate -> move "latest"
-#   -> update the Docker Hub description -> create the GitHub release
+#   -> update the Docker Hub description -> create the GitHub release (with the Windows PowerShell
+#   audit, windows/swarm-core-audit.ps1, and its SHA-256 attached)
 # The tag message's first line is the release title; the rest of the message opens the release notes.
 # Run it manually ("Run workflow") for a dry run that builds the image without publishing anything.
 #
@@ -169,11 +170,17 @@ jobs:
           TITLE: ${{ needs.verify.outputs.title }}
         run: |
           tag="v$VERSION"
+          # Windows PowerShell audit and its checksum, attached to the release
+          mkdir -p assets
+          cp windows/swarm-core-audit.ps1 assets/
+          (cd assets && sha256sum swarm-core-audit.ps1 > swarm-core-audit.ps1.sha256)
           if gh release view "$tag" > /dev/null 2>&1; then
-            echo "Release $tag already exists; leaving it unchanged" >> "$GITHUB_STEP_SUMMARY"
+            gh release upload "$tag" assets/swarm-core-audit.ps1 assets/swarm-core-audit.ps1.sha256 --clobber
+            echo "Release $tag already exists; notes left unchanged, Windows assets uploaded" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           git fetch --force origin "refs/tags/$tag:refs/tags/$tag"
           scripts/release-notes.sh "$tag" > notes.md
-          gh release create "$tag" --verify-tag --latest --title "$TITLE" --notes-file notes.md
-          echo "Created release $tag" >> "$GITHUB_STEP_SUMMARY"
+          gh release create "$tag" --verify-tag --latest --title "$TITLE" --notes-file notes.md \
+            assets/swarm-core-audit.ps1 assets/swarm-core-audit.ps1.sha256
+          echo "Created release $tag with the Windows PowerShell audit attached" >> "$GITHUB_STEP_SUMMARY"

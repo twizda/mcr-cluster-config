@@ -49,7 +49,7 @@ param(
 )
 
 # Release version, updated by scripts/prepare-release.sh (matches ENV MCR_CLUSTER_CONFIG_VERSION in the Dockerfile)
-$ScriptVersion = '0.5.4'
+$ScriptVersion = '0.6.0'
 
 $Invariant = [System.Globalization.CultureInfo]::InvariantCulture
 $Stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
