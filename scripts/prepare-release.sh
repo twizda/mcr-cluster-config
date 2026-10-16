@@ -48,6 +48,7 @@ for f in DOCKERHUB.md HARBOR.md; do
     sed -e "s|/blob/v[0-9.]*/support-dump-count-cores.sh|/blob/v$version/support-dump-count-cores.sh|" \
         -e "s|\(docker pull registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config:\)[0-9.]*|\1$version|" \
         -e "s|\(mcr-cluster-config version \)[0-9.]*|\1$version|" \
+        -e "s|/releases/download/v[0-9.]*/|/releases/download/v$version/|g" \
         "$f.new" > "$f"
     rm -f "$f.new"
     grep -q "^| \`$version\`, \`latest\` |" "$f" || { echo "Failed to update the $f tags table." >&2; exit 1; }
