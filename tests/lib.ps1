@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
     Assertion helpers shared by the PowerShell test scripts (dot-source this file).
-    The caller sets $Script (the audit script) and $Shell (the PowerShell to run it with).
+    The caller sets $script:AuditScript (the audit script) and $script:Shell (the PowerShell to run it with).
 #>
 $script:Pass = 0
 $script:Fail = 0
@@ -14,10 +14,10 @@ function Write-Fail([string]$Name, [string]$Detail) {
 function Assert-Equal([string]$Name, $Actual, $Expected) {
     if ($Actual -ceq $Expected) { Write-Pass $Name } else { Write-Fail $Name "expected: $Expected`nactual:   $Actual" }
 }
-function Assert-Contains([string]$Name, [string]$Haystack, [string]$Needle) {
+function Assert-Substring([string]$Name, [string]$Haystack, [string]$Needle) {
     if ($Haystack.Contains($Needle)) { Write-Pass $Name } else { Write-Fail $Name "expected to find: $Needle" }
 }
-function Assert-NotContains([string]$Name, [string]$Haystack, [string]$Needle) {
+function Assert-NoSubstring([string]$Name, [string]$Haystack, [string]$Needle) {
     if ($Haystack.Contains($Needle)) { Write-Fail $Name "did not expect: $Needle" } else { Write-Pass $Name }
 }
 
@@ -29,14 +29,14 @@ $Shim51 = 'function ConvertFrom-Json { param([Parameter(ValueFromPipeline = $tru
 # Runs the audit; returns exit code, stdout and stderr
 function Invoke-Audit([string[]]$Arguments) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $Shell
+    $psi.FileName = $script:Shell
     if ($script:Emulate51) {
         $quoted = ($Arguments | ForEach-Object { if ($_ -like '-*') { $_ } else { "'" + $_.Replace("'", "''") + "'" } }) -join ' '
-        $command = "$Shim51; & '$Script' $quoted; exit `$LASTEXITCODE"
+        $command = "$Shim51; & '$script:AuditScript' $quoted; exit `$LASTEXITCODE"
         $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
         $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded"
     } else {
-        $all = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Script) + $Arguments
+        $all = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script:AuditScript) + $Arguments
         $psi.Arguments = ($all | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' '
     }
     $psi.UseShellExecute = $false

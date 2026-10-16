@@ -14,8 +14,8 @@
 #>
 $ErrorActionPreference = 'Stop'
 $Tests = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Script = Join-Path (Split-Path -Parent $Tests) 'windows/swarm-core-audit.ps1'
-$Shell = (Get-Process -Id $PID).Path
+$script:AuditScript = Join-Path (Split-Path -Parent $Tests) 'windows/swarm-core-audit.ps1'
+$script:Shell = (Get-Process -Id $PID).Path
 $Work = Join-Path ([System.IO.Path]::GetTempPath()) ("ps-swarm-tests-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $Work | Out-Null
 . (Join-Path $Tests 'lib.ps1')
@@ -61,16 +61,16 @@ try {
     Write-Output '# table'
     $result = Invoke-Audit @()
     Assert-Equal 'exits 0' $result.Code 0
-    Assert-Contains 'connects through the named pipe' $result.Err '] Connected to the Docker engine via npipe:'
-    Assert-Contains 'connected node is this engine' $result.Err "] Connected node: $hostname, $operatingSystem, kernel "
-    Assert-Contains 'node count' $result.Err "] Retrieved $nodeCount node"
-    Assert-Contains 'table header' $result.Out '| Hostname '
-    Assert-Contains 'Windows total row' $result.Out ('| Windows    | {0,5} |' -f $nodeCount)
+    Assert-Substring 'connects through the named pipe' $result.Err '] Connected to the Docker engine via npipe:'
+    Assert-Substring 'connected node is this engine' $result.Err "] Connected node: $hostname, $operatingSystem, kernel "
+    Assert-Substring 'node count' $result.Err "] Retrieved $nodeCount node"
+    Assert-Substring 'table header' $result.Out '| Hostname '
+    Assert-Substring 'Windows total row' $result.Out ('| Windows    | {0,5} |' -f $nodeCount)
     $row = @(($result.Out -split "`r?`n") | Where-Object { $_.StartsWith("| $hostname ") })
     Assert-Equal 'one table row for this node' $row.Count 1
     if ($row.Count -eq 1) {
-        Assert-Contains 'row shows windows platform' $row[0] '| windows/'
-        Assert-Contains 'row shows the operating system' $row[0] "| $($operatingSystem.Substring(0, [math]::Min(57, $operatingSystem.Length)))"
+        Assert-Substring 'row shows windows platform' $row[0] '| windows/'
+        Assert-Substring 'row shows the operating system' $row[0] "| $($operatingSystem.Substring(0, [math]::Min(57, $operatingSystem.Length)))"
     }
 
     Write-Output '# -NodesCsv'
@@ -100,7 +100,7 @@ try {
     Assert-Equal 'JSON windows group counts every node' ([int](@($parsed.groups) | Where-Object { $_.os -eq 'windows' }).nodes) $nodeCount
     $result = Invoke-Audit @('-Csv')
     Assert-Equal '-Csv exits 0' $result.Code 0
-    Assert-Contains '-Csv windows group' $result.Out (",all,windows,$nodeCount,")
+    Assert-Substring '-Csv windows group' $result.Out (",all,windows,$nodeCount,")
 } finally {
     if ($createdSwarm) {
         Write-Output 'Leaving the test swarm'

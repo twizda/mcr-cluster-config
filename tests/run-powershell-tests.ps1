@@ -14,9 +14,9 @@
 #>
 $ErrorActionPreference = 'Stop'
 $Tests = Split-Path -Parent $MyInvocation.MyCommand.Path
-$Script = Join-Path (Split-Path -Parent $Tests) 'windows/swarm-core-audit.ps1'
+$script:AuditScript = Join-Path (Split-Path -Parent $Tests) 'windows/swarm-core-audit.ps1'
 $Expected = Join-Path $Tests 'expected'
-$Shell = (Get-Process -Id $PID).Path
+$script:Shell = (Get-Process -Id $PID).Path
 $Work = Join-Path ([System.IO.Path]::GetTempPath()) ("ps-audit-tests-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $Work | Out-Null
 
@@ -79,20 +79,20 @@ try {
     Write-Output '# log messages'
     $result = Invoke-Audit @('-InputDirectory', (Join-Path $Tests 'fixtures/mock-windows'))
     $firstLine = ($result.Err -split "`r?`n")[0]
-    Assert-Contains 'first line is the version' $firstLine '] mcr-cluster-config version '
-    Assert-Contains 'connected node described' $result.Err '] Connected node: WIN-MGR-01, Windows Server 2022 Datacenter'
-    Assert-Contains 'node count wording' $result.Err '] Retrieved 4 nodes (managers: 1, workers: 3)'
-    Assert-Contains 'OS coverage warning with Windows hint' $result.Err '] Operating system found for 1 of 4 nodes. docker info on this engine only describes this node; run the audit on each node'
-    Assert-Contains 'down node warning' $result.Err '] Node WIN-WKR-02: state down, availability active (heartbeat failure)'
-    Assert-Contains 'drained node warning' $result.Err '] Node win-wkr-03: state ready, availability drain'
-    Assert-Contains 'stdout has the table' $result.Out '| Hostname   | Node ID    |'
-    Assert-NotContains 'no log lines on stdout' $result.Out 'INFO['
+    Assert-Substring 'first line is the version' $firstLine '] mcr-cluster-config version '
+    Assert-Substring 'connected node described' $result.Err '] Connected node: WIN-MGR-01, Windows Server 2022 Datacenter'
+    Assert-Substring 'node count wording' $result.Err '] Retrieved 4 nodes (managers: 1, workers: 3)'
+    Assert-Substring 'OS coverage warning with Windows hint' $result.Err '] Operating system found for 1 of 4 nodes. docker info on this engine only describes this node; run the audit on each node'
+    Assert-Substring 'down node warning' $result.Err '] Node WIN-WKR-02: state down, availability active (heartbeat failure)'
+    Assert-Substring 'drained node warning' $result.Err '] Node win-wkr-03: state ready, availability drain'
+    Assert-Substring 'stdout has the table' $result.Out '| Hostname   | Node ID    |'
+    Assert-NoSubstring 'no log lines on stdout' $result.Out 'INFO['
 
     $result = Invoke-Audit @('-InputDirectory', (Join-Path $Tests 'fixtures/mock-mke'))
-    Assert-Contains 'MKE version through MKE' $result.Err '] MKE version: 3.8.8'
-    Assert-Contains 'MSR version from services' $result.Err '] MSR version: 2.9.19'
-    Assert-NotContains 'no connected-node line through MKE' $result.Err 'Connected node:'
-    Assert-NotContains 'every node has an OS through MKE' $result.Err 'Operating system found for'
+    Assert-Substring 'MKE version through MKE' $result.Err '] MKE version: 3.8.8'
+    Assert-Substring 'MSR version from services' $result.Err '] MSR version: 2.9.19'
+    Assert-NoSubstring 'no connected-node line through MKE' $result.Err 'Connected node:'
+    Assert-NoSubstring 'every node has an OS through MKE' $result.Err 'Operating system found for'
 
     Write-Output '# options and errors'
     $out = Join-Path $Work 'bom-check.csv'
@@ -102,10 +102,10 @@ try {
     Assert-Equal '-OutFile uses LF line endings' ((Read-Text $out).Contains("`r")) $false
     $result = Invoke-Audit @('-InputDirectory', (Join-Path $Tests 'fixtures/mock-windows'), '-Csv', '-Json')
     Assert-Equal 'conflicting formats: exits 1' $result.Code 1
-    Assert-Contains 'conflicting formats: FATA message' $result.Err '] Use only one of -Csv, -NodesCsv and -Json.'
+    Assert-Substring 'conflicting formats: FATA message' $result.Err '] Use only one of -Csv, -NodesCsv and -Json.'
     $result = Invoke-Audit @('-InputDirectory', $Work)
     Assert-Equal 'missing nodes.json: exits 1' $result.Code 1
-    Assert-Contains 'missing nodes.json: FATA message' $result.Err '] Unable to find nodes.json'
+    Assert-Substring 'missing nodes.json: FATA message' $result.Err '] Unable to find nodes.json'
     $result = Invoke-Audit @('-InputDirectory', (Join-Path $Tests 'fixtures/mock-windows'), '-NodesCsv')
     Assert-Equal 'stdout without -OutFile matches the expected file' ($result.Out -replace "`r", '') (Read-Text (Join-Path $Expected 'audit-mock-windows.nodes-csv.out'))
   }

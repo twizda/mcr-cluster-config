@@ -61,15 +61,15 @@ $UseColor = (-not [Console]::IsErrorRedirected) -and (-not $env:NO_COLOR) -and $
 $Esc = [char]27
 $LevelColors = @{ INFO = "$Esc[36m"; WARN = "$Esc[33m"; FATA = "$Esc[31m" }
 
-function Write-Log([string]$Level, [string]$Message) {
+function Write-AuditLog([string]$Level, [string]$Message) {
     $elapsed = [int][math]::Floor($Stopwatch.Elapsed.TotalSeconds)
     $name = $Level
     if ($UseColor) { $name = "$($LevelColors[$Level])$Level$Esc[0m" }
     [Console]::Error.WriteLine(("{0}[{1:D4}] {2}" -f $name, $elapsed, $Message))
 }
-function Write-Info([string]$Message) { Write-Log 'INFO' $Message }
-function Write-Warn([string]$Message) { Write-Log 'WARN' $Message }
-function Exit-Fatal([string]$Message) { Write-Log 'FATA' $Message; exit 1 }
+function Write-Info([string]$Message) { Write-AuditLog 'INFO' $Message }
+function Write-Warn([string]$Message) { Write-AuditLog 'WARN' $Message }
+function Exit-Fatal([string]$Message) { Write-AuditLog 'FATA' $Message; exit 1 }
 
 # Prints a count with a singular or plural noun, e.g. "1 node", "2 nodes"
 function Format-Plural([long]$Count, [string]$Noun) {
