@@ -120,6 +120,10 @@ function Invoke-Docker([string[]]$Arguments) {
     return [pscustomobject]@{ ExitCode = $process.ExitCode; Out = $stdout.Result.Trim(); Err = $stderr.Result.Trim() }
 }
 
+# Windows PowerShell 5.1's ConvertFrom-Json returns a JSON array as a single object instead of
+# enumerating it (7.x enumerates); assigning the result to a variable first, then using @($var),
+# gives a flat array on both.
+
 # Inspects objects in batches of 100: keeps command lines short, and each JSON document well under
 # the ~2 MB limit of ConvertFrom-Json in Windows PowerShell 5.1
 function Get-DockerObjects([string]$Kind, [string[]]$Ids) {
@@ -128,7 +132,8 @@ function Get-DockerObjects([string]$Kind, [string[]]$Ids) {
         $batch = $Ids[$i..([math]::Min($i + 99, $Ids.Count - 1))]
         $result = Invoke-Docker (@($Kind, 'inspect') + $batch)
         if ($result.ExitCode -ne 0) { return $null }
-        $objects += @(ConvertFrom-Json -InputObject $result.Out)
+        $parsed = ConvertFrom-Json -InputObject $result.Out
+        $objects += @($parsed)
     }
     return , $objects
 }
@@ -136,7 +141,8 @@ function Get-DockerObjects([string]$Kind, [string[]]$Ids) {
 function Read-InputFile([string]$Name, $Default) {
     $path = Join-Path $InputDirectory $Name
     if (-not (Test-Path -LiteralPath $path)) { return $Default }
-    return ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($path))
+    $parsed = ConvertFrom-Json -InputObject ([System.IO.File]::ReadAllText($path))
+    return $parsed
 }
 
 # --- Options ---

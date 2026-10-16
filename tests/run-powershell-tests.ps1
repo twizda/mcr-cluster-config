@@ -38,12 +38,26 @@ function Assert-NotContains([string]$Name, [string]$Haystack, [string]$Needle) {
     if ($Haystack.Contains($Needle)) { Fail $Name "did not expect: $Needle" } else { Pass $Name }
 }
 
+# On PowerShell 7, also run the audit with ConvertFrom-Json behaving as in Windows PowerShell 5.1,
+# which returns a JSON array as a single object instead of enumerating it
+$Emulate51Modes = @($false)
+if ($PSVersionTable.PSVersion.Major -ge 7) { $Emulate51Modes += $true }
+$script:Emulate51 = $false
+$Shim51 = 'function ConvertFrom-Json { param([Parameter(ValueFromPipeline = $true)]$InputObject) Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $InputObject -NoEnumerate }'
+
 # Runs the audit; returns exit code, stdout and stderr
 function Invoke-Audit([string[]]$Arguments) {
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $Shell
-    $all = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Script) + $Arguments
-    $psi.Arguments = ($all | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' '
+    if ($script:Emulate51) {
+        $quoted = ($Arguments | ForEach-Object { if ($_ -like '-*') { $_ } else { "'" + $_.Replace("'", "''") + "'" } }) -join ' '
+        $command = "$Shim51; & '$Script' $quoted; exit `$LASTEXITCODE"
+        $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
+        $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded"
+    } else {
+        $all = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Script) + $Arguments
+        $psi.Arguments = ($all | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' '
+    }
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
@@ -73,6 +87,9 @@ function ConvertTo-Canonical($Value) {
 Write-Output "PowerShell audit tests (PowerShell $($PSVersionTable.PSVersion) $($PSVersionTable.PSEdition))"
 
 try {
+  foreach ($emulate in $Emulate51Modes) {
+    $script:Emulate51 = $emulate
+    if ($emulate) { Write-Output '## again, with ConvertFrom-Json behaving as in Windows PowerShell 5.1' }
     foreach ($fixture in @('mock-mke', 'mock-windows')) {
         Write-Output "# $fixture"
         $fixtureDir = Join-Path $Tests "fixtures/$fixture"
@@ -135,6 +152,7 @@ try {
     Assert-Contains 'missing nodes.json: FATA message' $result.Err '] Unable to find nodes.json'
     $result = Invoke-Audit @('-InputDirectory', (Join-Path $Tests 'fixtures/mock-windows'), '-NodesCsv')
     Assert-Equal 'stdout without -OutFile matches the expected file' ($result.Out -replace "`r", '') (Read-Text (Join-Path $Expected 'audit-mock-windows.nodes-csv.out'))
+  }
 } finally {
     Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue
 }
