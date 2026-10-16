@@ -69,7 +69,7 @@ function Write-Log([string]$Level, [string]$Message) {
 }
 function Write-Info([string]$Message) { Write-Log 'INFO' $Message }
 function Write-Warn([string]$Message) { Write-Log 'WARN' $Message }
-function Stop-Fatal([string]$Message) { Write-Log 'FATA' $Message; exit 1 }
+function Exit-Fatal([string]$Message) { Write-Log 'FATA' $Message; exit 1 }
 
 # Prints a count with a singular or plural noun, e.g. "1 node", "2 nodes"
 function Format-Plural([long]$Count, [string]$Noun) {
@@ -88,7 +88,7 @@ function Format-TotalGiB($Bytes) {
     $hundredths = [math]::Truncate(([decimal]$Bytes * 100) / 1073741824)
     return ($hundredths / 100).ToString('F2', $Invariant)
 }
-function Get-Cores($Node) {
+function Get-CoreCount($Node) {
     $nano = $Node.Description.Resources.NanoCPUs
     if (-not $nano) { return [long]0 }
     return [long][math]::Floor([double]$nano / 1000000000)
@@ -126,7 +126,7 @@ function Invoke-Docker([string[]]$Arguments) {
 
 # Inspects objects in batches of 100: keeps command lines short, and each JSON document well under
 # the ~2 MB limit of ConvertFrom-Json in Windows PowerShell 5.1
-function Get-DockerObjects([string]$Kind, [string[]]$Ids) {
+function Get-DockerObject([string]$Kind, [string[]]$Ids) {
     $objects = @()
     for ($i = 0; $i -lt $Ids.Count; $i += 100) {
         $batch = $Ids[$i..([math]::Min($i + 99, $Ids.Count - 1))]
@@ -147,7 +147,7 @@ function Read-InputFile([string]$Name, $Default) {
 
 # --- Options ---
 if (@($Csv, $NodesCsv, $Json | Where-Object { $_ }).Count -gt 1) {
-    Stop-Fatal 'Use only one of -Csv, -NodesCsv and -Json.'
+    Exit-Fatal 'Use only one of -Csv, -NodesCsv and -Json.'
 }
 
 Write-Info "mcr-cluster-config version $ScriptVersion"
@@ -155,7 +155,7 @@ Write-Info "mcr-cluster-config version $ScriptVersion"
 # --- Collect cluster data ---
 if ($InputDirectory) {
     if (-not (Test-Path -LiteralPath (Join-Path $InputDirectory 'nodes.json'))) {
-        Stop-Fatal "Unable to find nodes.json in $InputDirectory."
+        Exit-Fatal "Unable to find nodes.json in $InputDirectory."
     }
     $Info = Read-InputFile 'info.json' ([pscustomobject]@{})
     $ServerVersion = [string](Read-InputFile 'version.json' ([pscustomobject]@{})).Version
@@ -164,7 +164,7 @@ if ($InputDirectory) {
     Write-Info "Reading audit data from $InputDirectory"
 } else {
     $command = Get-Command docker -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $command) { Stop-Fatal 'The docker CLI was not found. Run this on a node with MCR installed, or add docker to PATH.' }
+    if (-not $command) { Exit-Fatal 'The docker CLI was not found. Run this on a node with MCR installed, or add docker to PATH.' }
     $script:DockerPath = $command.Source
 
     $result = Invoke-Docker @('version', '--format', '{{json .Server}}')
@@ -173,7 +173,7 @@ if ($InputDirectory) {
         if ($result.Err -match 'Access is denied|permission denied') {
             $hint = ' Run PowerShell as Administrator, or as a member of the docker-users group.'
         }
-        Stop-Fatal "Unable to connect to the Docker engine: $($result.Err)$hint"
+        Exit-Fatal "Unable to connect to the Docker engine: $($result.Err)$hint"
     }
     $ServerVersion = [string](ConvertFrom-Json -InputObject $result.Out).Version
     $endpoint = if ($env:DOCKER_HOST) { $env:DOCKER_HOST } else { 'npipe:////./pipe/docker_engine' }
@@ -181,10 +181,10 @@ if ($InputDirectory) {
     else { Write-Info "Connected to the Docker engine via $endpoint" }
 
     $result = Invoke-Docker @('node', 'ls', '--quiet')
-    if ($result.ExitCode -ne 0) { Stop-Fatal "Unable to list nodes: $($result.Err)" }
+    if ($result.ExitCode -ne 0) { Exit-Fatal "Unable to list nodes: $($result.Err)" }
     $ids = @($result.Out -split '\s+' | Where-Object { $_ })
-    $Nodes = Get-DockerObjects 'node' $ids
-    if ($null -eq $Nodes) { Stop-Fatal 'Unable to inspect nodes.' }
+    $Nodes = Get-DockerObject 'node' $ids
+    if ($null -eq $Nodes) { Exit-Fatal 'Unable to inspect nodes.' }
 
     $result = Invoke-Docker @('info', '--format', '{{json .}}')
     $Info = [pscustomobject]@{}
@@ -194,7 +194,7 @@ if ($InputDirectory) {
     $result = Invoke-Docker @('service', 'ls', '--quiet')
     $serviceIds = @($result.Out -split '\s+' | Where-Object { $_ })
     if ($result.ExitCode -eq 0 -and $serviceIds.Count -gt 0) {
-        $inspected = Get-DockerObjects 'service' $serviceIds
+        $inspected = Get-DockerObject 'service' $serviceIds
         if ($null -ne $inspected) { $Services = $inspected }
     }
 }
@@ -294,7 +294,7 @@ foreach ($node in $Nodes) {
         arch             = [string]$node.Description.Platform.Architecture
         operating_system = $operatingSystem
         engine           = [string]$node.Description.Engine.EngineVersion
-        cpus             = Get-Cores $node
+        cpus             = Get-CoreCount $node
         mem_gib          = Format-NodeGiB $node.Description.Resources.MemoryBytes
         orchestrators    = $orchestrators
         collection       = $collection
@@ -314,7 +314,7 @@ $NodeRows.Sort([System.Comparison[object]]{
 })
 
 # Totals for a role/OS group; only nodes that report CPU data are counted (as in the Linux scripts)
-function Get-GroupStats([string]$Role, [string]$Os) {
+function Get-GroupStatistic([string]$Role, [string]$Os) {
     $members = @($Nodes | Where-Object {
         ($Role -eq 'all' -or $_.Spec.Role -eq $Role) -and
         (-not $Os -or $_.Description.Platform.OS -eq $Os) -and
@@ -323,7 +323,7 @@ function Get-GroupStats([string]$Role, [string]$Os) {
     $cores = [long]0
     $bytes = [decimal]0
     foreach ($member in $members) {
-        $cores += Get-Cores $member
+        $cores += Get-CoreCount $member
         if ($member.Description.Resources.MemoryBytes) { $bytes += [decimal]$member.Description.Resources.MemoryBytes }
     }
     return [pscustomobject]@{ Nodes = $members.Count; Cores = $cores; Gib = Format-TotalGiB $bytes }
@@ -358,7 +358,7 @@ $Output = New-Object System.Collections.Generic.List[string]
 
 if ($Json) {
     $groupObjects = foreach ($group in $Groups) {
-        $stats = Get-GroupStats $group[0] $group[1]
+        $stats = Get-GroupStatistic $group[0] $group[1]
         [ordered]@{ role = $group[0]; os = $group[1]; nodes = $stats.Nodes; cores = $stats.Cores; mem_gib = [double]::Parse($stats.Gib, $Invariant) }
     }
     $nodeObjects = foreach ($row in $NodeRows) {
@@ -379,7 +379,7 @@ if ($Json) {
 } elseif ($Csv) {
     $Output.Add('ClusterID,Role,OS,NodeCount,TotalCores,TotalGiB')
     foreach ($group in $Groups) {
-        $stats = Get-GroupStats $group[0] $group[1]
+        $stats = Get-GroupStatistic $group[0] $group[1]
         $Output.Add(('{0},{1},{2},{3},{4},{5}' -f $ClusterId, $group[0], $group[1], $stats.Nodes, $stats.Cores, $stats.Gib))
     }
 } elseif ($NodesCsv) {
@@ -413,7 +413,7 @@ if ($Json) {
     $Output.Add($border)
     foreach ($entry in @(@('Managers', 'manager', ''), @('Workers', 'worker', ''), '-', @('Linux', 'all', 'linux'), @('Windows', 'all', 'windows'), '-', @('Total', 'all', ''))) {
         if ($entry -eq '-') { $Output.Add($border); continue }
-        $stats = Get-GroupStats $entry[1] $entry[2]
+        $stats = Get-GroupStatistic $entry[1] $entry[2]
         $Output.Add(($rowFormat -f $entry[0], $stats.Nodes, $stats.Cores, $stats.Gib))
     }
     $Output.Add($border)

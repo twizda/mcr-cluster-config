@@ -20,55 +20,11 @@ $Shell = (Get-Process -Id $PID).Path
 $Work = Join-Path ([System.IO.Path]::GetTempPath()) ("ps-audit-tests-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $Work | Out-Null
 
-$script:Pass = 0
-$script:Fail = 0
-function Pass([string]$Name) { $script:Pass++; Write-Output "  ok   - $Name" }
-function Fail([string]$Name, [string]$Detail) {
-    $script:Fail++
-    Write-Output "  FAIL - $Name"
-    if ($Detail) { $Detail -split "`n" | Select-Object -First 20 | ForEach-Object { Write-Output "         $_" } }
-}
-function Assert-Equal([string]$Name, $Actual, $Expected) {
-    if ($Actual -ceq $Expected) { Pass $Name } else { Fail $Name "expected: $Expected`nactual:   $Actual" }
-}
-function Assert-Contains([string]$Name, [string]$Haystack, [string]$Needle) {
-    if ($Haystack.Contains($Needle)) { Pass $Name } else { Fail $Name "expected to find: $Needle" }
-}
-function Assert-NotContains([string]$Name, [string]$Haystack, [string]$Needle) {
-    if ($Haystack.Contains($Needle)) { Fail $Name "did not expect: $Needle" } else { Pass $Name }
-}
+. (Join-Path $Tests 'lib.ps1')
 
-# On PowerShell 7, also run the audit with ConvertFrom-Json behaving as in Windows PowerShell 5.1,
-# which returns a JSON array as a single object instead of enumerating it
+# On PowerShell 7, also run every test with ConvertFrom-Json behaving as in Windows PowerShell 5.1
 $Emulate51Modes = @($false)
 if ($PSVersionTable.PSVersion.Major -ge 7) { $Emulate51Modes += $true }
-$script:Emulate51 = $false
-$Shim51 = 'function ConvertFrom-Json { param([Parameter(ValueFromPipeline = $true)]$InputObject) Microsoft.PowerShell.Utility\ConvertFrom-Json -InputObject $InputObject -NoEnumerate }'
-
-# Runs the audit; returns exit code, stdout and stderr
-function Invoke-Audit([string[]]$Arguments) {
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $Shell
-    if ($script:Emulate51) {
-        $quoted = ($Arguments | ForEach-Object { if ($_ -like '-*') { $_ } else { "'" + $_.Replace("'", "''") + "'" } }) -join ' '
-        $command = "$Shim51; & '$Script' $quoted; exit `$LASTEXITCODE"
-        $encoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($command))
-        $psi.Arguments = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encoded"
-    } else {
-        $all = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $Script) + $Arguments
-        $psi.Arguments = ($all | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' '
-    }
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
-    $psi.StandardErrorEncoding = [System.Text.Encoding]::UTF8
-    $process = [System.Diagnostics.Process]::Start($psi)
-    $stdout = $process.StandardOutput.ReadToEndAsync()
-    $stderr = $process.StandardError.ReadToEndAsync()
-    $process.WaitForExit()
-    return [pscustomobject]@{ Code = $process.ExitCode; Out = $stdout.Result; Err = $stderr.Result }
-}
 
 function Read-Text([string]$Path) { return [System.IO.File]::ReadAllText($Path) }
 
@@ -103,18 +59,18 @@ try {
             if ($mode -eq 'json') {
                 $actual = ConvertTo-Canonical (ConvertFrom-Json -InputObject (Read-Text $out))
                 $wanted = ConvertTo-Canonical (ConvertFrom-Json -InputObject (Read-Text $expectedFile))
-                if ($actual -ceq $wanted) { Pass "json content matches $(Split-Path -Leaf $expectedFile)" }
-                else { Fail "json content matches $(Split-Path -Leaf $expectedFile)" "expected: $wanted`nactual:   $actual" }
+                if ($actual -ceq $wanted) { Write-Pass "json content matches $(Split-Path -Leaf $expectedFile)" }
+                else { Write-Fail "json content matches $(Split-Path -Leaf $expectedFile)" "expected: $wanted`nactual:   $actual" }
             } else {
                 $actual = Read-Text $out
                 $wanted = Read-Text $expectedFile
-                if ($actual -ceq $wanted) { Pass "$mode output matches $(Split-Path -Leaf $expectedFile)" }
+                if ($actual -ceq $wanted) { Write-Pass "$mode output matches $(Split-Path -Leaf $expectedFile)" }
                 else {
                     $a = $actual -split "`n"; $w = $wanted -split "`n"
                     $diff = for ($i = 0; $i -lt [math]::Max($a.Count, $w.Count); $i++) {
                         if ($i -ge $a.Count -or $i -ge $w.Count -or $a[$i] -cne $w[$i]) { "line $($i + 1):`n  expected: $($w[$i])`n  actual:   $($a[$i])" }
                     }
-                    Fail "$mode output matches $(Split-Path -Leaf $expectedFile)" (($diff | Select-Object -First 3) -join "`n")
+                    Write-Fail "$mode output matches $(Split-Path -Leaf $expectedFile)" (($diff | Select-Object -First 3) -join "`n")
                 }
             }
         }
@@ -157,6 +113,5 @@ try {
     Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue
 }
 
-Write-Output ''
-Write-Output "$($script:Pass) passed, $($script:Fail) failed"
+Write-Summary
 if ($script:Fail -gt 0) { exit 1 }

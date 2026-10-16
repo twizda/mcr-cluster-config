@@ -194,9 +194,10 @@ The `tests` directory has three test scripts. CI runs all of them on every pull 
 | `tests/check-shared-code.sh` | The code shared by both scripts is identical | `bash` |
 | `tests/run-dump-tests.sh` | The support-dump script against the sample dumps in `tests/fixtures`, compared with `tests/expected` | `bash`, `jq`, `bc` |
 | `tests/run-swarm-tests.sh` | The image against a throwaway two-node Docker-in-Docker swarm, and a mock MKE API. Also saves the reference output in `tests/expected/audit-*` | Docker (privileged containers) |
-| `tests/run-powershell-tests.ps1` | `windows/swarm-core-audit.ps1` against the mock clusters; its output must match the same `tests/expected/audit-*` files as the Linux audit | PowerShell 5.1 or 7 |
+| `tests/run-powershell-tests.ps1` | `windows/swarm-core-audit.ps1` against the mock clusters; its output must match the same `tests/expected/audit-*` files as the Linux audit. On PowerShell 7, every test runs a second time with Windows PowerShell 5.1's JSON behavior | PowerShell 5.1 or 7 |
+| `tests/run-windows-swarm-tests.ps1` | `windows/swarm-core-audit.ps1` against a real Windows engine in Swarm mode, compared with `docker info` and `docker node ls`. Creates (and afterwards leaves) a single-node swarm if the engine isn't in one | Docker in Windows containers mode (MCR on Windows Server, or Docker Desktop), as Administrator |
 
-CI also runs ShellCheck, and runs the support-dump tests on macOS with its built-in bash 3.2.
+CI also runs ShellCheck and PSScriptAnalyzer, runs the support-dump tests on macOS with its built-in bash 3.2, and runs both PowerShell test scripts on a Windows Server runner with Windows PowerShell 5.1 and PowerShell 7.
 
 After a deliberate output change, regenerate the expected files, then review the diff before committing:
 
