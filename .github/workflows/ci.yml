@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: ShellCheck
-        run: shellcheck -s bash -S warning swarm-core-audit.sh support-dump-count-cores.sh tests/*.sh scripts/*.sh
+        run: shellcheck -s bash -S warning swarm-core-audit.sh support-dump-count-cores.sh tests/*.sh scripts/*.sh windows/*.sh
       - name: actionlint
         run: docker run --rm -v "$PWD":/repo -w /repo rhysd/actionlint:1.7.7 -no-color
       - name: Shared code is identical in both scripts, and versions match
@@ -86,7 +86,73 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Make sure the Docker engine is running
+        shell: pwsh
+        run: |
+          # The Windows runner images don't always have the Docker service started when a job begins
+          if ((Get-Service docker).Status -ne 'Running') { Start-Service docker }
+          for ($i = 0; $i -lt 60; $i++) {
+            docker version --format '{{.Server.Version}}' 2>$null
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Start-Sleep -Seconds 2
+          }
+          throw 'The Docker engine did not start within 2 minutes'
       - name: Live test with Windows PowerShell 5.1
         run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/run-windows-swarm-tests.ps1
       - name: Live test with PowerShell 7
         run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/run-windows-swarm-tests.ps1
+
+  windows-image-build:
+    name: Windows image build
+    runs-on: ubuntu-24.04
+    services:
+      registry:
+        image: registry:2
+        ports: ['5000:5000']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - name: Build the Windows variants on Linux
+        run: windows/build-image.sh localhost:5000/mcr-cluster-config ci --insecure --save images
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: windows-images
+          path: images/windows-*.tar
+          retention-days: 3
+
+  windows-image-test:
+    name: Windows image test (${{ matrix.runner }})
+    needs: windows-image-build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: windows-2022, variant: ltsc2022 }
+          - { runner: windows-2025, variant: ltsc2025 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: windows-images
+      - name: Make sure the Docker engine is running
+        shell: pwsh
+        run: |
+          # The Windows runner images don't always have the Docker service started when a job begins
+          if ((Get-Service docker).Status -ne 'Running') { Start-Service docker }
+          for ($i = 0; $i -lt 60; $i++) {
+            docker version --format '{{.Server.Version}}' 2>$null
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Start-Sleep -Seconds 2
+          }
+          throw 'The Docker engine did not start within 2 minutes'
+      - name: Load the image
+        shell: pwsh
+        run: |
+          docker load -i windows-${{ matrix.variant }}.tar
+          if ($LASTEXITCODE -ne 0) { throw "docker load failed with $LASTEXITCODE" }
+      - name: Container test with Windows PowerShell 5.1 (direct runs)
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File tests/run-windows-container-tests.ps1 -Image localhost:5000/mcr-cluster-config:ci-windows-${{ matrix.variant }}
+      - name: Container test with PowerShell 7 (direct runs)
+        shell: pwsh
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/run-windows-container-tests.ps1 -Image localhost:5000/mcr-cluster-config:ci-windows-${{ matrix.variant }}

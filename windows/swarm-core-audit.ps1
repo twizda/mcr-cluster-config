@@ -33,19 +33,26 @@
     Read info.json, version.json, nodes.json and services.json from this directory instead of
     the docker engine. Used by the tests, and to audit data captured on another machine.
 
+.PARAMETER LinuxStyleOptions
+    The Linux script's options are also accepted: --csv, --nodes-csv, --json and --help.
+
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\swarm-core-audit.ps1
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File .\swarm-core-audit.ps1 -NodesCsv -OutFile nodes.csv
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [switch]$Csv,
     [switch]$NodesCsv,
     [switch]$Json,
     [string]$OutFile,
-    [string]$InputDirectory
+    [string]$InputDirectory,
+    # Linux-style options (--csv, --nodes-csv, --json, --help), so the same commands work with the
+    # Linux and Windows container images
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$LinuxStyleOptions
 )
 
 # Release version, updated by scripts/prepare-release.sh (matches ENV MCR_CLUSTER_CONFIG_VERSION in the Dockerfile)
@@ -146,6 +153,27 @@ function Read-InputFile([string]$Name, $Default) {
 }
 
 # --- Options ---
+foreach ($option in @($LinuxStyleOptions | Where-Object { $_ })) {
+    switch -CaseSensitive ($option) {
+        '--csv'       { $Csv = [switch]$true }
+        '--nodes-csv' { $NodesCsv = [switch]$true }
+        '--json'      { $Json = [switch]$true }
+        '--help' {
+            # Same usage text as swarm-core-audit.sh, plus the PowerShell-only options
+            Write-Output 'Usage: swarm-core-audit.ps1 [--json | --csv | --nodes-csv] [-OutFile <file>]'
+            Write-Output 'Audits Docker Swarm node sizing via the Docker engine (Windows).'
+            Write-Output ''
+            Write-Output 'Options:'
+            Write-Output '  --json, -Json            Output cluster summary and per-node details in JSON format'
+            Write-Output '  --csv, -Csv              Output the summary by node group in CSV format'
+            Write-Output '  --nodes-csv, -NodesCsv   Output per-node details in CSV format'
+            Write-Output '  -OutFile <file>          Write the output to a UTF-8 file'
+            Write-Output '  --help                   Display this help message'
+            exit 0
+        }
+        default { Exit-Fatal "Unknown option: $option. Run with --help to see the supported options." }
+    }
+}
 if (@($Csv, $NodesCsv, $Json | Where-Object { $_ }).Count -gt 1) {
     Exit-Fatal 'Use only one of -Csv, -NodesCsv and -Json.'
 }
@@ -357,14 +385,16 @@ $Groups = @(@('all', ''), @('manager', ''), @('worker', ''), @('all', 'linux'), 
 $Output = New-Object System.Collections.Generic.List[string]
 
 if ($Json) {
+    # GiB values are decimals so they keep two places (16.00, 0.00), as in the Linux audit's JSON,
+    # on both Windows PowerShell 5.1 and 7 (a double would print as 16.0 or 16)
     $groupObjects = foreach ($group in $Groups) {
         $stats = Get-GroupStatistic $group[0] $group[1]
-        [ordered]@{ role = $group[0]; os = $group[1]; nodes = $stats.Nodes; cores = $stats.Cores; mem_gib = [double]::Parse($stats.Gib, $Invariant) }
+        [ordered]@{ role = $group[0]; os = $group[1]; nodes = $stats.Nodes; cores = $stats.Cores; mem_gib = [decimal]::Parse($stats.Gib, $Invariant) }
     }
     $nodeObjects = foreach ($row in $NodeRows) {
         $copy = [ordered]@{}
         foreach ($property in $row.PSObject.Properties) { $copy[$property.Name] = $property.Value }
-        $copy['mem_gib'] = [double]::Parse($row.mem_gib, $Invariant)
+        $copy['mem_gib'] = [decimal]::Parse($row.mem_gib, $Invariant)
         $copy['orchestrators'] = @($row.orchestrators)
         $copy
     }

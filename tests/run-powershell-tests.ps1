@@ -28,18 +28,6 @@ if ($PSVersionTable.PSVersion.Major -ge 7) { $Emulate51Modes += $true }
 
 function Read-Text([string]$Path) { return [System.IO.File]::ReadAllText($Path) }
 
-# Canonical form of a JSON value, with every number as a double, for comparing by content
-function ConvertTo-Canonical($Value) {
-    if ($null -eq $Value) { return 'null' }
-    if ($Value -is [string]) { return ConvertTo-Json -InputObject $Value -Compress }
-    if ($Value -is [bool]) { if ($Value) { return 'true' } else { return 'false' } }
-    if ($Value -is [datetime]) { return $Value.ToUniversalTime().ToString('o') }
-    if ($Value -is [ValueType]) { return ([double]$Value).ToString('R', [System.Globalization.CultureInfo]::InvariantCulture) }
-    if ($Value -is [System.Collections.IEnumerable]) { return '[' + ((@($Value) | ForEach-Object { ConvertTo-Canonical $_ }) -join ',') + ']' }
-    $fields = foreach ($p in $Value.PSObject.Properties) { (ConvertTo-Json -InputObject $p.Name -Compress) + ':' + (ConvertTo-Canonical $p.Value) }
-    return '{' + ($fields -join ',') + '}'
-}
-
 Write-Output "PowerShell audit tests (PowerShell $($PSVersionTable.PSVersion) $($PSVersionTable.PSEdition))"
 
 try {
@@ -108,6 +96,25 @@ try {
     Assert-Substring 'missing nodes.json: FATA message' $result.Err '] Unable to find nodes.json'
     $result = Invoke-Audit @('-InputDirectory', (Join-Path $Tests 'fixtures/mock-windows'), '-NodesCsv')
     Assert-Equal 'stdout without -OutFile matches the expected file' ($result.Out -replace "`r", '') (Read-Text (Join-Path $Expected 'audit-mock-windows.nodes-csv.out'))
+
+    Write-Output '# Linux-style options (same commands as the Linux image)'
+    foreach ($mode in @('csv', 'nodes-csv')) {
+        $result = Invoke-Audit @('-InputDirectory', (Join-Path $Tests 'fixtures/mock-windows'), "--$mode")
+        Assert-Equal "--$mode exits 0" $result.Code 0
+        Assert-Equal "--$mode matches the expected file" ($result.Out -replace "`r", '') (Read-Text (Join-Path $Expected "audit-mock-windows.$mode.out"))
+    }
+    $result = Invoke-Audit @('-InputDirectory', (Join-Path $Tests 'fixtures/mock-windows'), '--json')
+    Assert-Equal '--json exits 0' $result.Code 0
+    Assert-Substring '--json outputs JSON' $result.Out '{"cluster_id":"w1nclust3r0000000000000000"'
+    $result = Invoke-Audit @('--help')
+    Assert-Equal '--help exits 0' $result.Code 0
+    Assert-Substring '--help prints usage' $result.Out 'Usage: swarm-core-audit.ps1 [--json | --csv | --nodes-csv]'
+    Assert-NoSubstring '--help prints no log lines' $result.Err 'INFO['
+    $result = Invoke-Audit @('-InputDirectory', (Join-Path $Tests 'fixtures/mock-windows'), '--xml')
+    Assert-Equal 'unknown option: exits 1' $result.Code 1
+    Assert-Substring 'unknown option: FATA message' $result.Err '] Unknown option: --xml.'
+    $result = Invoke-Audit @('-InputDirectory', (Join-Path $Tests 'fixtures/mock-windows'), '--csv', '--json')
+    Assert-Equal '--csv with --json: exits 1' $result.Code 1
   }
 } finally {
     Remove-Item -Recurse -Force $Work -ErrorAction SilentlyContinue
