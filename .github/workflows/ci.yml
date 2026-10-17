@@ -113,6 +113,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Build the Windows variants on Linux
         run: windows/build-image.sh localhost:5000/mcr-cluster-config ci --insecure --save images
+      - name: Combine with a Linux image and check every Windows entry records its build
+        # The published multi-platform image stands in for the Linux part, as in a release
+        run: |
+          scripts/combine-image.sh localhost:5000/mcr-cluster-config:ci docker.io/twizda/mcr-cluster-config:latest \
+            localhost:5000/mcr-cluster-config:ci-windows-ltsc2019 \
+            localhost:5000/mcr-cluster-config:ci-windows-ltsc2022 \
+            localhost:5000/mcr-cluster-config:ci-windows-ltsc2025
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: windows-images

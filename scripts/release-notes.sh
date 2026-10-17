@@ -30,13 +30,31 @@ previous=$(git tag --list 'v0.*' --sort=-version:refname | grep -vx "$tag" | hea
 if [ -n "$summary" ]; then
     printf '%s\n\n' "$summary"
 fi
-echo "**Docker image:** \`$image:$version\` (also \`latest\`), for ${platforms//,/ and }."
+windows_image=false
+git cat-file -e "$tag:windows/build-image.sh" 2> /dev/null && windows_image=true
+if $windows_image; then
+    echo "**Docker image:** \`$image:$version\` (also \`latest\`), for ${platforms//,/, } and Windows Server 2019, 2022 and 2025."
+else
+    echo "**Docker image:** \`$image:$version\` (also \`latest\`), for ${platforms//,/ and }."
+fi
 echo '```bash'
 echo "docker pull ${image#docker.io/}:$version"
 echo '```'
 echo ""
-echo "Docker Scout found no fixable critical or high vulnerabilities in this image."
+if $windows_image; then
+    echo "Docker Scout found no fixable critical or high vulnerabilities in the Linux variants (Docker Scout doesn't scan Windows images)."
+else
+    echo "Docker Scout found no fixable critical or high vulnerabilities in this image."
+fi
 echo ""
+# Windows container: the same tag runs on Windows Server, with the engine's named pipe mounted
+if $windows_image; then
+    echo "**Windows Server (container):** the same image runs on Windows Server 2019, 2022 and 2025, and Docker Desktop on Windows 10/11. On a Swarm manager:"
+    echo '```powershell'
+    echo "docker run --rm -v \\\\.\\pipe\\docker_engine:\\\\.\\pipe\\docker_engine ${image#docker.io/}:$version"
+    echo '```'
+    echo ""
+fi
 # Windows PowerShell audit, attached to releases that include it
 if git cat-file -e "$tag:windows/swarm-core-audit.ps1" 2> /dev/null; then
     url="https://github.com/$repo/releases/download/$tag"

@@ -1,7 +1,8 @@
 name: Release
 
 # Publishes a release when a v0.x tag is pushed:
-#   verify -> CI tests -> build and push image -> Docker Scout gate -> move "latest"
+#   verify -> CI tests -> build and push the Linux image -> Docker Scout gate -> build the Windows
+#   variants -> create the version tag (Linux + Windows) -> move "latest"
 #   -> update the Docker Hub description -> create the GitHub release (with the Windows PowerShell
 #   audit, windows/swarm-core-audit.ps1, and its SHA-256 attached)
 # The tag message's first line is the release title; the rest of the message opens the release notes.
@@ -95,25 +96,26 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Push only the version tag first; "latest" moves after the security scan passes
-      - name: Build and push ${{ env.VERSION }}
+      # The Linux image is pushed by digest only; the version tag is created after the security
+      # scan passes, combined with the Windows variants
+      - name: Build and push the Linux image
+        id: linux
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
         with:
           context: .
           platforms: ${{ env.PLATFORMS }}
-          push: ${{ env.PUBLISH == 'true' }}
           no-cache: true
           provenance: mode=max
           sbom: true
-          tags: ${{ env.IMAGE }}:${{ env.VERSION }}
           labels: org.opencontainers.image.revision=${{ github.sha }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=${{ env.PUBLISH == 'true' }}
 
       - name: Docker Scout gate (linux/amd64)
         if: env.PUBLISH == 'true'
         uses: docker/scout-action@221e7f4860634eeb1579e3bd7ca232e577bd1864  # v1.26.0
         with:
           command: cves
-          image: registry://${{ env.IMAGE }}:${{ env.VERSION }}
+          image: registry://${{ env.IMAGE }}@${{ steps.linux.outputs.digest }}
           platform: linux/amd64
           only-fixed: true
           only-severities: critical,high
@@ -126,7 +128,7 @@ jobs:
         uses: docker/scout-action@221e7f4860634eeb1579e3bd7ca232e577bd1864  # v1.26.0
         with:
           command: cves
-          image: registry://${{ env.IMAGE }}:${{ env.VERSION }}
+          image: registry://${{ env.IMAGE }}@${{ steps.linux.outputs.digest }}
           platform: linux/arm64
           only-fixed: true
           only-severities: critical,high
@@ -134,6 +136,20 @@ jobs:
           write-comment: false
           dockerhub-user: ${{ vars.DOCKERHUB_USERNAME }}
           dockerhub-password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Windows Server 2019, 2022 and 2025 variants, built on Linux (Docker Scout doesn't scan
+      # Windows images; they contain Microsoft's Nano Server, PowerShell, the docker CLI and the script)
+      - name: Build and push the Windows variants
+        if: env.PUBLISH == 'true'
+        run: windows/build-image.sh "$IMAGE" "$VERSION"
+
+      - name: Create ${{ env.VERSION }} (Linux and Windows)
+        if: env.PUBLISH == 'true'
+        env:
+          LINUX_DIGEST: ${{ steps.linux.outputs.digest }}
+        run: |
+          scripts/combine-image.sh "$IMAGE:$VERSION" "$IMAGE@$LINUX_DIGEST" \
+            "$IMAGE:$VERSION-windows-ltsc2019" "$IMAGE:$VERSION-windows-ltsc2022" "$IMAGE:$VERSION-windows-ltsc2025"
 
       - name: Move latest to ${{ env.VERSION }}
         if: env.PUBLISH == 'true'

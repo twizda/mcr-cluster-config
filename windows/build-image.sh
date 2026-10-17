@@ -4,7 +4,9 @@
 # image for each Windows Server version, and pushes the result.
 #
 # Usage: windows/build-image.sh <repository> <tag> [--insecure] [--save <dir>]
-#   Pushes <repository>:<tag>-windows-ltsc2019, -ltsc2022 and -ltsc2025, and prints their digests.
+#   Pushes <repository>:<tag>-windows-ltsc2019, -ltsc2022 and -ltsc2025, each as a one-entry index that
+#   records the Windows build (os.version), and prints their digests. Combine them with the Linux
+#   image with scripts/combine-image.sh.
 #   --insecure   the registry is plain HTTP (a local test registry)
 #   --save <dir> also save each variant as a docker-load-able tarball (windows-ltsc20xx.tar)
 # Needs Linux x86_64, curl, sha256sum, unzip and tar; downloads are verified against pinned checksums.
@@ -82,11 +84,18 @@ for variant in $VARIANTS; do
         --label "org.opencontainers.image.revision=$revision" \
         --label "description=Docker Swarm / MKE cluster audit for Windows Server (PowerShell)" \
         -t "$ref" > /dev/null
-    digest=$("$crane" digest "${insecure[@]}" "$ref")
     os_version=$("$crane" config "${insecure[@]}" "$ref" | sed -n 's/.*"os.version":"\([^"]*\)".*/\1/p')
-    echo "$ref@$digest (Windows $os_version)"
+    # Publish the tag as a one-entry index whose descriptor records the Windows build (os.version):
+    # Windows hosts use it to pick the matching variant, and "docker buildx imagetools create"
+    # only keeps os.version when the source is an index (it drops it for a plain image)
+    "$crane" index append "${insecure[@]}" -m "$ref" -t "$ref" > /dev/null
+    if ! "$crane" manifest "${insecure[@]}" "$ref" | grep -q "\"os.version\":\"$os_version\""; then
+        echo "The index for $ref does not record os.version $os_version" >&2
+        exit 1
+    fi
+    echo "$ref@$("$crane" digest "${insecure[@]}" "$ref") (index for Windows $os_version)"
     if [ -n "$save_dir" ]; then
         # "legacy" is the docker save layout; the default layout has file names with ":" that Windows rejects
-        "$crane" pull "${insecure[@]}" --format legacy "$ref" "$save_dir/windows-$name.tar"
+        "$crane" --platform windows/amd64 pull "${insecure[@]}" --format legacy "$ref" "$save_dir/windows-$name.tar"
     fi
 done
