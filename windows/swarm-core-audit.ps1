@@ -385,14 +385,16 @@ $Groups = @(@('all', ''), @('manager', ''), @('worker', ''), @('all', 'linux'), 
 $Output = New-Object System.Collections.Generic.List[string]
 
 if ($Json) {
+    # GiB values are decimals so they keep two places (16.00, 0.00), as in the Linux audit's JSON,
+    # on both Windows PowerShell 5.1 and 7 (a double would print as 16.0 or 16)
     $groupObjects = foreach ($group in $Groups) {
         $stats = Get-GroupStatistic $group[0] $group[1]
-        [ordered]@{ role = $group[0]; os = $group[1]; nodes = $stats.Nodes; cores = $stats.Cores; mem_gib = [double]::Parse($stats.Gib, $Invariant) }
+        [ordered]@{ role = $group[0]; os = $group[1]; nodes = $stats.Nodes; cores = $stats.Cores; mem_gib = [decimal]::Parse($stats.Gib, $Invariant) }
     }
     $nodeObjects = foreach ($row in $NodeRows) {
         $copy = [ordered]@{}
         foreach ($property in $row.PSObject.Properties) { $copy[$property.Name] = $property.Value }
-        $copy['mem_gib'] = [double]::Parse($row.mem_gib, $Invariant)
+        $copy['mem_gib'] = [decimal]::Parse($row.mem_gib, $Invariant)
         $copy['orchestrators'] = @($row.orchestrators)
         $copy
     }

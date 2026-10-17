@@ -91,9 +91,10 @@ try {
         $direct = Invoke-Audit $options
         Assert-Equal "$label exits 0" $container.Code 0
         if ($label -eq '--json') {
-            # Compared by content: PowerShell 5.1 and 7 escape some characters differently in JSON
-            $normalize = { param($text) ConvertTo-Json -InputObject (ConvertFrom-Json -InputObject $text) -Depth 10 -Compress }
-            Assert-Equal "$label identical (by content)" (& $normalize $container.Out) (& $normalize $direct.Out)
+            # Compared by content: PowerShell 5.1 and 7 format some JSON values differently
+            $fromContainer = ConvertTo-Canonical (ConvertFrom-Json -InputObject $container.Out)
+            $fromDirect = ConvertTo-Canonical (ConvertFrom-Json -InputObject $direct.Out)
+            Assert-Equal "$label identical (by content)" $fromContainer $fromDirect
         } else {
             Assert-Equal "$label identical" $container.Out ($direct.Out -replace "`r", '')
         }

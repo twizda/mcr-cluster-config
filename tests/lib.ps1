@@ -51,6 +51,18 @@ function Invoke-Audit([string[]]$Arguments) {
     return [pscustomobject]@{ Code = $process.ExitCode; Out = $stdout.Result; Err = $stderr.Result }
 }
 
+# Canonical form of a JSON value, with every number as a double, for comparing by content
+function ConvertTo-Canonical($Value) {
+    if ($null -eq $Value) { return 'null' }
+    if ($Value -is [string]) { return ConvertTo-Json -InputObject $Value -Compress }
+    if ($Value -is [bool]) { if ($Value) { return 'true' } else { return 'false' } }
+    if ($Value -is [datetime]) { return $Value.ToUniversalTime().ToString('o') }
+    if ($Value -is [ValueType]) { return ([double]$Value).ToString('R', [System.Globalization.CultureInfo]::InvariantCulture) }
+    if ($Value -is [System.Collections.IEnumerable]) { return '[' + ((@($Value) | ForEach-Object { ConvertTo-Canonical $_ }) -join ',') + ']' }
+    $fields = foreach ($p in $Value.PSObject.Properties) { (ConvertTo-Json -InputObject $p.Name -Compress) + ':' + (ConvertTo-Canonical $p.Value) }
+    return '{' + ($fields -join ',') + '}'
+}
+
 function Write-Summary {
     Write-Output ''
     Write-Output "$($script:Pass) passed, $($script:Fail) failed"
