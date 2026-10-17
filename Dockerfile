@@ -4,7 +4,7 @@ FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cab
 
 # Release version: the single source of truth, updated by scripts/prepare-release.sh.
 # The scripts print it at startup, and it fills the image's version label.
-ENV MCR_CLUSTER_CONFIG_VERSION=0.6.0
+ENV MCR_CLUSTER_CONFIG_VERSION=0.7.0
 
 # Use LABEL to provide maintainer information and other metadata
 LABEL maintainer="Tom Wizda <twizda@mirantis.com>" \

@@ -21,7 +21,7 @@ docker pull twizda/mcr-cluster-config
 | [**Through MKE with a client bundle**](#through-mke-with-a-client-bundle-recommended) (recommended) | You can download an MKE client bundle | All nodes |
 | [**On a manager node**](#on-a-manager-node) | You're on a Swarm manager without MKE, or can't use a client bundle | Only the node the container runs on |
 | [**From a support dump**](#from-a-support-dump) | You only have an MKE support dump | Nodes with `docker info` output in the dump |
-| [**On Windows Server**](#on-windows-server) | The cluster is MCR on Windows Server only, with no Linux machine available | Only the node the script runs on (all nodes through MKE) |
+| [**On Windows Server**](#on-windows-server) | The cluster is MCR on Windows Server only, with no Linux machine available | Only the node the container (or script) runs on |
 
 ### Through MKE with a client bundle (recommended)
 
@@ -75,9 +75,25 @@ Either way, it prints the same per-node table as the live audit, read from the d
 
 ### On Windows Server
 
-The image is a Linux container, so it can't run on Windows Server. On a Windows Swarm manager, use the PowerShell version of the audit. It needs no container: only the `docker` CLI that MCR installs and Windows PowerShell 5.1 or later (included in Windows Server 2016 and later).
+The same image also has Windows variants for Windows Server 2019, 2022 and 2025; Docker pulls the one that matches the host. On a Windows Swarm manager, in PowerShell as Administrator, mount the engine's named pipe:
 
-Download it, with its checksum, from the [latest release](https://github.com/twizda/mcr-cluster-config/releases/latest), then verify and run it in PowerShell as Administrator (or as a member of the `docker-users` group):
+```powershell
+docker run --rm -v \\.\pipe\docker_engine:\\.\pipe\docker_engine twizda/mcr-cluster-config
+```
+
+It runs the PowerShell version of the audit (`windows/swarm-core-audit.ps1`) with the same output and options as the Linux image (`--csv`, `--nodes-csv`, `--json`, `--help`). To save a report, redirect through `cmd`, because `>` in Windows PowerShell 5.1 writes UTF-16:
+
+```powershell
+cmd /c "docker run --rm -v \\.\pipe\docker_engine:\\.\pipe\docker_engine twizda/mcr-cluster-config --nodes-csv > nodes.csv"
+```
+
+To pin a Windows Server version, use the per-variant tags, for example `twizda/mcr-cluster-config:<version>-windows-ltsc2022`. The image also runs with Docker Desktop on Windows 10/11 in Windows containers mode, where each container gets its own Hyper-V VM.
+
+Without MKE, `docker info` only describes the node the audit runs on, so the **Operating System** column is filled in for that node only; run it on each node if you need every node's operating system.
+
+#### Without Docker images: the PowerShell script
+
+Where pulling images isn't possible, run the script directly. It needs only the `docker` CLI that MCR installs and Windows PowerShell 5.1 or later (included in Windows Server 2016 and later). Download it, with its checksum, from the [latest release](https://github.com/twizda/mcr-cluster-config/releases/latest), then verify and run it in PowerShell as Administrator (or as a member of the `docker-users` group):
 
 ```powershell
 [Net.ServicePointManager]::SecurityProtocol = 'Tls12'
@@ -89,15 +105,7 @@ powershell -ExecutionPolicy Bypass -File .\swarm-core-audit.ps1
 
 The first line enables TLS 1.2, which GitHub requires and Windows PowerShell 5.1 on Windows Server 2016 and 2019 may not use by default. The checksum line should print `True`.
 
-It prints the same tables, log messages and CSV/JSON as the container. Use `-Csv`, `-NodesCsv` or `-Json` for other formats, and `-OutFile <file>` to save them as UTF-8 (redirecting with `>` in Windows PowerShell 5.1 writes UTF-16):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\swarm-core-audit.ps1 -NodesCsv -OutFile nodes.csv
-```
-
-Run `Get-Help .\swarm-core-audit.ps1 -Detailed` for all options. The script is also in this repository as `windows/swarm-core-audit.ps1`.
-
-Without MKE, `docker info` only describes the node the script runs on, so the **Operating System** column is filled in for that node only; run the script on each node if you need every node's operating system. With an MKE client bundle loaded (`. .\env.ps1`), every node's operating system is reported.
+Use `-Csv`, `-NodesCsv` or `-Json` (or the Linux-style `--csv`, `--nodes-csv`, `--json`) for other formats, and `-OutFile <file>` to save them as UTF-8. Run `Get-Help .\swarm-core-audit.ps1 -Detailed` for all options. With an MKE client bundle loaded (`. .\env.ps1`), every node's operating system is reported.
 
 ## Options
 
@@ -163,7 +171,7 @@ Uptime, hypervisor and GPU aren't available from `docker info` or `docker node l
 By default, the audit prints a per-node table followed by a summary table. Progress and error messages are written to stderr in the standard Mirantis log format (`INFO`, `WARN`, `FATA`), so redirecting `--csv`, `--nodes-csv` or `--json` output to a file captures only the data. With `-t`, levels are colored (cyan, yellow and red); set `NO_COLOR=1` to turn colors off.
 
 ```text
-INFO[0000] mcr-cluster-config version 0.6.0
+INFO[0000] mcr-cluster-config version 0.7.0
 INFO[0000] Connected to MKE at https://mke.example.com
 INFO[0000] Cluster ID: 4ysfudgvpfagt1yy0gwf9viqi
 INFO[0000] MKE version: 3.8.8
