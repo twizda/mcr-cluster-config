@@ -5,8 +5,9 @@
 .DESCRIPTION
     Runs the image with the engine's named pipe mounted, and requires its output to be identical
     to running windows/swarm-core-audit.ps1 directly on the same host, for every output format.
-    Needs Docker in Windows containers mode with process isolation (Windows Server), run as
-    Administrator. If the engine isn't in a swarm, a single-node swarm is created for the test and
+    Needs Docker in Windows containers mode, run as Administrator: on Windows Server (process
+    isolation, where the image must match the host's Windows build), or Docker Desktop on Windows
+    10/11 (Hyper-V isolation, where any variant runs in its own VM with its own Windows kernel). If the engine isn't in a swarm, a single-node swarm is created for the test and
     left again afterwards; an existing swarm is not changed.
 
 .PARAMETER Image
@@ -63,7 +64,10 @@ if ($serverOs -ne 'windows') {
     exit 1
 }
 $hostBuild = (Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion').CurrentBuild
-Write-Output "Host: Windows build $hostBuild, engine $(Get-DockerValue @('version', '--format', '{{.Server.Version}}'))"
+# Windows Server runs containers with process isolation by default (the image's Windows build must
+# match the host's); Docker Desktop on Windows 10/11 uses Hyper-V isolation (any image build runs)
+$isolation = Get-DockerValue @('info', '--format', '{{.Isolation}}')
+Write-Output "Host: Windows build $hostBuild, engine $(Get-DockerValue @('version', '--format', '{{.Server.Version}}')), $isolation isolation"
 
 $createdSwarm = $false
 if ((Get-DockerValue @('info', '--format', '{{.Swarm.LocalNodeState}}')) -eq 'inactive') {
@@ -77,8 +81,12 @@ if ((Get-DockerValue @('info', '--format', '{{.Swarm.LocalNodeState}}')) -eq 'in
 
 try {
     Write-Output '# image'
-    $imageOsVersion = Get-DockerValue @('image', 'inspect', '--format', '{{.OsVersion}}', $Image)
-    Assert-Equal 'image matches the host Windows build' ($imageOsVersion.Split('.')[2]) ([string]$hostBuild)
+    $imageBuild = (Get-DockerValue @('image', 'inspect', '--format', '{{.OsVersion}}', $Image)).Split('.')[2]
+    if ($isolation -eq 'hyperv') {
+        Write-Pass "image (Windows build $imageBuild) runs in its own Hyper-V VM; no build match needed"
+    } else {
+        Assert-Equal 'image matches the host Windows build (process isolation)' $imageBuild ([string]$hostBuild)
+    }
     $scriptVersion = ((Select-String -LiteralPath $script:AuditScript -Pattern "^\`$ScriptVersion = '(.*)'").Matches[0].Groups[1].Value)
     # Labels are read as JSON: Windows PowerShell 5.1 mangles double quotes in native-command arguments
     $labels = ConvertFrom-Json -InputObject (Get-DockerValue @('image', 'inspect', '--format', '{{json .Config.Labels}}', $Image))
