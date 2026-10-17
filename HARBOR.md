@@ -10,12 +10,13 @@ Source code, issues and release notes: **https://github.com/twizda/mcr-cluster-c
 
 | Tag | Notes |
 |---|---|
-| `0.6.0`, `latest` | PowerShell audit for Windows Server, attached to each release |
+| `0.7.0`, `latest` | Windows Server 2019, 2022 and 2025 variants under the same tag (docker run with the named pipe) |
+| `0.6.0` | PowerShell audit for Windows Server, attached to each release |
 | `0.5.4` | Support-dump script included in the image (--entrypoint support-dump-count-cores.sh) |
 | `0.5.3` | Clearer MKE connection messages; hints for client-bundle and SELinux setup errors |
 | `0.5.2` | Singular wording ("1 node") and OS/Arch display fixes |
 
-Tags are built for `linux/amd64` and `linux/arm64`, with build provenance and an SBOM attached. Older releases are available on [Docker Hub](https://hub.docker.com/r/twizda/mcr-cluster-config/tags).
+Tags are built for `linux/amd64` and `linux/arm64`, with build provenance and an SBOM attached. From `0.7.0`, they also include Windows variants for Windows Server 2019, 2022 and 2025. Older releases are available on [Docker Hub](https://hub.docker.com/r/twizda/mcr-cluster-config/tags).
 
 ## Pulling the image
 
@@ -23,7 +24,7 @@ This is a private project. Log in first:
 
 ```bash
 docker login registry.ci.mirantis.com
-docker pull registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config:0.6.0
+docker pull registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config:0.7.0
 ```
 
 ## Quick start
@@ -54,7 +55,7 @@ With an MKE client bundle loaded in your shell, add `-e affinity:container==ucp-
 ## Example output
 
 ```text
-INFO[0000] mcr-cluster-config version 0.6.0
+INFO[0000] mcr-cluster-config version 0.7.0
 INFO[0000] Connected to MKE at https://mke.example.com
 INFO[0000] Cluster ID: 4ysfudgvpfagt1yy0gwf9viqi
 INFO[0000] MKE version: 3.8.8
@@ -109,15 +110,17 @@ docker run --rm -e UCP_URL="mke.example.com" -v /path/to/bundle:/data:ro \
 | `UCP_URL` | MKE host (no `https://`). If set, the API is reached using the client bundle mounted at `/data`. Otherwise, `/var/run/docker.sock` is used. |
 | `NO_COLOR` | Set to any value to turn off colored log output. |
 
-## Windows Server (no container)
+## Windows Server
 
-This image is a Linux container, so it can't run on Windows Server. For clusters that run MCR on Windows Server, each release also includes a PowerShell version of the audit with the same output: [`swarm-core-audit.ps1`](https://github.com/twizda/mcr-cluster-config/releases/download/v0.6.0/swarm-core-audit.ps1), with its [SHA-256](https://github.com/twizda/mcr-cluster-config/releases/download/v0.6.0/swarm-core-audit.ps1.sha256). It needs only the `docker` CLI and Windows PowerShell 5.1 or later. On a Swarm manager, as Administrator:
+The same tag also runs on Windows Server 2019, 2022 and 2025: Docker pulls the Windows variant that matches the host. On a Swarm manager, in PowerShell as Administrator, mount the engine's named pipe:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\swarm-core-audit.ps1
+docker run --rm -v \\.\pipe\docker_engine:\\.\pipe\docker_engine registry.ci.mirantis.com/pvt-twizda/mcr-cluster-config
 ```
 
-See the [README](https://github.com/twizda/mcr-cluster-config#on-windows-server) for download and verification steps.
+It produces the same output and takes the same options (`--csv`, `--nodes-csv`, `--json`) as on Linux. To save a report from Windows PowerShell 5.1, redirect through `cmd` (`cmd /c "docker run ... --nodes-csv > nodes.csv"`), because `>` in PowerShell 5.1 writes UTF-16. Without MKE, the Operating System column is filled in only for the node the container runs on.
+
+Where pulling images isn't possible, each release also includes the PowerShell script itself: [`swarm-core-audit.ps1`](https://github.com/twizda/mcr-cluster-config/releases/download/v0.7.0/swarm-core-audit.ps1), with its [SHA-256](https://github.com/twizda/mcr-cluster-config/releases/download/v0.7.0/swarm-core-audit.ps1.sha256). It needs only the `docker` CLI and Windows PowerShell 5.1 or later; see the [README](https://github.com/twizda/mcr-cluster-config#on-windows-server) for download and verification steps.
 
 ## No API access?
 
@@ -129,7 +132,7 @@ docker run --rm -v "$PWD":/dump:ro -w /dump --entrypoint support-dump-count-core
 
 It prints the same per-node table and totals as the live audit, with each node's operating system taken from the `docker info` output in the dump. Add `--csv`, `--nodes-csv` or `--json` for other formats. On SELinux-enforcing hosts such as RHEL, also add `--security-opt label=disable`.
 
-The same script, [`support-dump-count-cores.sh`](https://github.com/twizda/mcr-cluster-config/blob/v0.6.0/support-dump-count-cores.sh), can also be run directly from the GitHub repository; it needs `bash`, `awk`, `bc` and `jq`.
+The same script, [`support-dump-count-cores.sh`](https://github.com/twizda/mcr-cluster-config/blob/v0.7.0/support-dump-count-cores.sh), can also be run directly from the GitHub repository; it needs `bash`, `awk`, `bc` and `jq`.
 
 ## Security
 
